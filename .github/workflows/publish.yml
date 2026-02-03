@@ -14,6 +14,7 @@ jobs:
     name: Integration Test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false  # Ensure we see results for all platforms
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
     
@@ -28,7 +29,8 @@ jobs:
     - name: Pack and Install Tool Locally
       shell: pwsh
       run: |
-        dotnet pack Opener/Opener.csproj -c Release -o ./nupkg
+        dotnet build Opener/Opener.csproj -c Release
+        dotnet pack Opener/Opener.csproj -c Release -o ./nupkg --no-build
         dotnet tool install --global --add-source ./nupkg com.chirravuris.opener
     
     - name: Add Tool to Path (Windows)

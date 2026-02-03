@@ -13,10 +13,9 @@ function Cleanup-Opener {
     }
 
     # 2. Wipe standard data paths (exhaustive to handle Mac/Linux service variations)
-    $paths = @(
-        Join-Path $HOME ".local/share/Opener",
-        Join-Path $HOME "Library/Application Support/Opener"
-    )
+    $paths = @()
+    $paths += Join-Path $HOME ".local/share/Opener"
+    $paths += Join-Path $HOME "Library/Application Support/Opener"
     if ($localWin) { $paths += Join-Path $env:LOCALAPPDATA "Opener" }
 
     foreach ($p in $paths) {
