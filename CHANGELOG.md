@@ -29,3 +29,4 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Fixed `NullReferenceException` in command binding.
 - Hardened null-safety in many core services.
+- Added `--password` flags to `config set-encryption`, `export`, and `import` for automation.

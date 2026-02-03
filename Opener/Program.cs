@@ -2,7 +2,9 @@
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Opener.Models;
 using Opener.Services;
@@ -95,8 +97,10 @@ class Program
 
         var setEncryption = new Command("set-encryption", "Set encryption mode (local/portable)");
         var modeArg = new Argument<string>("mode", "local or portable");
+        var setEncPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for portable mode");
         setEncryption.AddArgument(modeArg);
-        setEncryption.SetHandler((string mode) => 
+        setEncryption.AddOption(setEncPassOpt);
+        setEncryption.SetHandler((string mode, string? passInput) => 
         {
             mode = mode.ToLower();
             if (mode != "local" && mode != "portable") 
@@ -119,12 +123,16 @@ class Program
             // 2. Prepare NEW configuration
             if (mode == "portable")
             {
-                var pass = AnsiConsole.Prompt(new TextPrompt<string>("Set Portable Password:").Secret());
-                var confirm = AnsiConsole.Prompt(new TextPrompt<string>("Confirm Password:").Secret());
-                if (pass != confirm) 
+                string pass = passInput ?? string.Empty;
+                if (string.IsNullOrEmpty(pass))
                 {
-                    AnsiConsole.MarkupLine("[red]Passwords do not match.[/]");
-                    return;
+                    pass = AnsiConsole.Prompt(new TextPrompt<string>("Set Portable Password:").Secret());
+                    var confirm = AnsiConsole.Prompt(new TextPrompt<string>("Confirm Password:").Secret());
+                    if (pass != confirm) 
+                    {
+                        AnsiConsole.MarkupLine("[red]Passwords do not match.[/]");
+                        return;
+                    }
                 }
                 credentialService.SetPassword(pass);
             }
@@ -152,7 +160,7 @@ class Program
                 // For safety, user should backup first.
             }
 
-        }, modeArg);
+        }, modeArg, setEncPassOpt);
         configCommand.AddCommand(setEncryption);
         
         var clearPass = new Command("clear-password", "Clear cached portable password");
@@ -168,8 +176,10 @@ class Program
         // --- EXPORT/IMPORT ---
         var exportCommand = new Command("export", "Export keys to a portable encrypted file");
         var exportPathArg = new Argument<string>("file", "Output file path");
+        var exportPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for export file");
         exportCommand.AddArgument(exportPathArg);
-        exportCommand.SetHandler((string path) => 
+        exportCommand.AddOption(exportPassOpt);
+        exportCommand.SetHandler((string path, string? passInput) => 
         {
             var keys = storageService.GetKeys();
             if (keys.Count == 0)
@@ -178,46 +188,57 @@ class Program
                 return;
             }
 
-            var pass = AnsiConsole.Prompt(new TextPrompt<string>("Enter password for export file:").Secret());
-            var confirm = AnsiConsole.Prompt(new TextPrompt<string>("Confirm password:").Secret());
-             if (pass != confirm) 
+            string pass = passInput ?? string.Empty;
+            if (string.IsNullOrEmpty(pass))
             {
-                AnsiConsole.MarkupLine("[red]Passwords do not match.[/]");
-                return;
+                pass = AnsiConsole.Prompt(new TextPrompt<string>("Enter password for export file:").Secret());
+                var confirm = AnsiConsole.Prompt(new TextPrompt<string>("Confirm password:").Secret());
+                if (pass != confirm) 
+                {
+                    AnsiConsole.MarkupLine("[red]Passwords do not match.[/]");
+                    return;
+                }
             }
 
             var tempEncryptor = new PortableEncryptionService(pass);
             // Verify path
             try {
-                var json = System.Text.Json.JsonSerializer.Serialize(keys, OpenerJsonContext.Default.ListOKey);
+                var json = JsonSerializer.Serialize(keys, OpenerJsonContext.Default.ListOKey);
                 var encrypted = tempEncryptor.Encrypt(json);
-                System.IO.File.WriteAllText(path, encrypted);
+                File.WriteAllText(path, encrypted);
                 AnsiConsole.MarkupLine($"[green]Exported {keys.Count} keys to {path}[/]");
             } catch (Exception ex) {
                 AnsiConsole.MarkupLine($"[red]Export failed:[/] {ex.Message}");
             }
-        }, exportPathArg);
+        }, exportPathArg, exportPassOpt);
         rootCommand.AddCommand(exportCommand);
 
         var importCommand = new Command("import", "Import keys from a portable encrypted file");
         var importPathArg = new Argument<string>("file", "Input file path");
+        var importPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for import file");
         importCommand.AddArgument(importPathArg);
-        importCommand.SetHandler((string path) => 
+        importCommand.AddOption(importPassOpt);
+        importCommand.SetHandler((string path, string? passInput) => 
         {
-            if (!System.IO.File.Exists(path))
+            if (!File.Exists(path))
             {
                 AnsiConsole.MarkupLine($"[red]File not found: {path}[/]");
                 return;
             }
 
-            var pass = AnsiConsole.Prompt(new TextPrompt<string>("Enter password for import file:").Secret());
+            string pass = passInput ?? string.Empty;
+            if (string.IsNullOrEmpty(pass))
+            {
+                pass = AnsiConsole.Prompt(new TextPrompt<string>("Enter password for import file:").Secret());
+            }
+            
             var tempEncryptor = new PortableEncryptionService(pass);
 
             try 
             {
-                var content = System.IO.File.ReadAllText(path);
+                var content = File.ReadAllText(path);
                 var json = tempEncryptor.Decrypt(content);
-                var importedKeys = System.Text.Json.JsonSerializer.Deserialize(json, OpenerJsonContext.Default.ListOKey);
+                var importedKeys = JsonSerializer.Deserialize(json, OpenerJsonContext.Default.ListOKey);
 
                 if (importedKeys != null)
                 {
@@ -226,7 +247,7 @@ class Program
                     int updated = 0;
                     foreach(var k in importedKeys)
                     {
-                        var existing = currentKeys.FirstOrDefault(x => x.Key.Equals(k.Key, StringComparison.OrdinalIgnoreCase));
+                        var existing = currentKeys.FirstOrDefault(x => x?.Key != null && x.Key.Equals(k.Key, StringComparison.OrdinalIgnoreCase));
                         if (existing != null)
                         {
                             existing.Value = k.Value;
@@ -248,7 +269,7 @@ class Program
                  AnsiConsole.MarkupLine($"[red]Import failed (Wrong password?):[/] {ex.Message}");
             }
 
-        }, importPathArg);
+        }, importPathArg, importPassOpt);
         rootCommand.AddCommand(importCommand);
 
         // --- EXISTING COMMANDS ---

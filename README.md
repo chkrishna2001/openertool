@@ -1,15 +1,22 @@
 # Opener Tool (`o`)
 
-**Opener** is a secure, developer-friendly CLI tool for managing and quickly accessing your frequently used sensitive data, links, scripts, and API calls. It stores data in an **encrypted** local file (using DPAPI or AES-256) and integrates seamlessly into your terminal workflow.
+**Opener** is a secure, developer-friendly, **cross-platform** CLI tool for managing and quickly accessing your frequently used sensitive data, links, scripts, and API calls. It stores data in an **encrypted** local file and integrates seamlessly into your terminal workflow.
 
 Think of it as a secure key-value store for your CLI that can "act" on the keys: opening browsers, running scripts, copying secrets to clipboard, or making API calls.
+
+## 🌍 Cross-Platform Support
+
+Opener is designed to work seamlessly across **Windows**, **Linux**, and **macOS**.
+
+- **Windows**: Uses native **DPAPI** for zero-config local encryption and **Windows Credential Manager** for secure password caching.
+- **Linux & macOS**: Uses a generated **Machine Key** for local encryption and automatically uses platform-specific commands like `xdg-open` or `open` to launch web paths.
 
 ## 🚀 Installation
 
 Install globally as a .NET tool:
 
 ```bash
-dotnet tool install --global Opener.Tool
+dotnet tool install --global com.chirravuris.opener
 ```
 
 Once installed, use the shorthand command `o`.
@@ -17,8 +24,8 @@ Once installed, use the shorthand command `o`.
 ## ✨ Features
 
 - **Secure Storage**: All data is encrypted at rest.
-  - **Local Mode (Default)**: Uses Windows DPAPI. No password needed, works seamlessly for the current user.
-  - **Portable Mode**: Uses AES-256 with a password (cached securely in Windows Credential Manager). Ideal for syncing via OneDrive/Dropbox or moving between machines.
+  - **Local Mode (Default)**: Zero-config. Uses DPAPI on Windows or a local machine-key on Linux/macOS.
+  - **Portable Mode**: Uses AES-256-GCM with a password. Ideal for syncing via OneDrive/Dropbox or moving between machines.
 - **Rich TUI**: Interactive tables and colored output using [Spectre.Console](https://spectreconsole.net/).
 - **Actionable Keys**: Not just storage — Opener acts on your data:
   - `WebPath`: Opens URLs in your default browser (supports dynamic placeholders).
@@ -32,10 +39,7 @@ Once installed, use the shorthand command `o`.
 ### Basics
 
 ```bash
-# Initialize storage (first run)
-o init
-
-# Add a key
+# Add a key (Auto-initializes on first use)
 o add <key> <value> -t <type>
 
 # Execute/Use a key
@@ -66,68 +70,33 @@ Store API keys, connection strings, or passwords.
 ```bash
 o add db-prod "Server=prod;Database=mydb;User Id=admin;Password=secret;" -t Data
 o db-prod
-# Output: Data copied to clipboard! (Ready to paste)
-```
-
-#### 3. JSON Snippets (`JsonData`)
-Store complex JSON payloads. Copies minified JSON to clipboard but displays pretty-printed version.
-
-```bash
-o add config "{ \"env\": \"prod\", \"retries\": 3 }" -t JsonData
-o config
-# Copies to clipboard and prints formatted JSON to terminal
+# Output: Data copied to clipboard!
 ```
 
 #### 4. Local Scripts & Folders (`LocalPath`)
-Launch local tools or scripts.
-
-```bash
-# Open a folder
-o add logs "C:\AppData\Logs" -t LocalPath
-o logs
-
-# Run a script
-o add deploy "C:\scripts\deploy.bat" -t LocalPath
-o deploy staging
-```
+Launch local tools or scripts. Supports absolute paths.
 
 #### 5. REST API Client (`Rest`)
-Store and execute API requests. Value must be a JSON object with `url`, `method`, and optional `body`.
+Store and execute API requests. Value must be a JSON object.
 
 ```bash
-# Add a REST endpoint
 o add get-user "{ \"url\": \"https://api.github.com/users/{0}\", \"method\": \"GET\" }" -t Rest
-
-# Execute it
 o get-user chkri
-# Output: Status: OK, { ...json response... }
 ```
 
 ## ☁️ Portable Mode & OneDrive Sync
 
-By default, Opener uses **Local Encryption** (DPAPI) which is machine-specific. If you want to sync your keys via OneDrive or move them between computers, switch to **Portable Mode**.
+By default, Opener uses **Local Encryption** which is tied to your machine. To sync your keys via OneDrive or move them between computers, switch to **Portable Mode**.
 
 ### Enable Portable Mode
 1. Set your storage location to a synced folder:
    ```bash
-   o config set-location "C:\Users\You\OneDrive\Opener\keys.dat"
+   o config set-location "/path/to/onedrive/opener.dat"
    ```
-2. Enable portable encryption (asks for a password):
+2. Enable portable encryption:
    ```bash
    o config set-encryption portable
    ```
-   *Your password is securely cached in Windows Credential Manager, so you don't need to type it every time.*
-
-### Migration (Export/Import)
-You can also manually move keys between machines:
-
-```bash
-# Machine A: Export to encrypted file
-o export backup.dat
-
-# Machine B: Import
-o import backup.dat
-```
 
 ## ⚙️ Configuration
 
@@ -135,13 +104,14 @@ o import backup.dat
 # Show current config
 o config show
 
-# Clear cached password (locks the tool on next use until re-entered)
+# Clear cached password
 o config clear-password
 ```
 
-## 🛠 Tech Stack
+- **Automation Friendly**: Supports `--password` flags for `config`, `export`, and `import` to integrate into scripts and CI/CD pipelines.
+- **🛠 Tech Stack**
 
-- **.NET 10** (AOT Enabled for speed)
+- **.NET 10** (AOT Enabled)
 - **System.CommandLine** (CLI Parsing)
 - **Spectre.Console** (UI)
-- **Windows DPAPI / AES-256** (Encryption)
+- **AES-256-GCM / DPAPI** (Encryption)

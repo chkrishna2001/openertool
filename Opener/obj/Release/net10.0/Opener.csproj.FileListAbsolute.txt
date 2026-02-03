@@ -32,3 +32,5 @@ C:\Users\chkri\source\repos\openertool\Opener\obj\Release\net10.0\refint\Opener.
 C:\Users\chkri\source\repos\openertool\Opener\obj\Release\net10.0\Opener.pdb
 C:\Users\chkri\source\repos\openertool\Opener\obj\Release\net10.0\Opener.genruntimeconfig.cache
 C:\Users\chkri\source\repos\openertool\Opener\obj\Release\net10.0\ref\Opener.dll
+C:\Users\chkri\source\repos\openertool\Opener\bin\Release\net10.0\Opener.exe
+C:\Users\chkri\source\repos\openertool\Opener\obj\Release\net10.0\Opener.sourcelink.json

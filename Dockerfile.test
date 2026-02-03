@@ -13,8 +13,11 @@ RUN dotnet tool install --global --add-source /nupkg com.chirravuris.opener
 # Add tool to path
 ENV PATH="/root/.dotnet/tools:${PATH}"
 
-# Make test script executable
-RUN chmod +x tests/integration_test.sh
+# Ensure we have PowerShell for the script
+RUN apt-get update && apt-get install -y powershell || true
 
-# Run integration tests
-CMD ["./tests/integration_test.sh"]
+# Run integration tests using pwsh (installed in dotnet sdk image usually, or we use the shell one)
+# Actually mcr.microsoft.com/dotnet/sdk:10.0 has pwsh? Let's check or just use the .sh for linux
+# But since we want to debug the .ps1 failure, let's try to run it with pwsh.
+
+CMD ["pwsh", "./tests/integration_test.ps1"]
