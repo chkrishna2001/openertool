@@ -33,3 +33,4 @@ C:\Users\chkri\source\repos\openertool\Opener\obj\Debug\net10.0\refint\Opener.dl
 C:\Users\chkri\source\repos\openertool\Opener\obj\Debug\net10.0\Opener.pdb
 C:\Users\chkri\source\repos\openertool\Opener\obj\Debug\net10.0\Opener.genruntimeconfig.cache
 C:\Users\chkri\source\repos\openertool\Opener\obj\Debug\net10.0\ref\Opener.dll
+C:\Users\chkri\source\repos\openertool\Opener\obj\Debug\net10.0\Opener.sourcelink.json

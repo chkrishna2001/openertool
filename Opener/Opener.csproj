@@ -10,7 +10,12 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>o</ToolCommandName>
     <PackageId>com.chirravuris.opener</PackageId>
+    <Version>1.0.1</Version>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Opener.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Spectre.Console" Version="0.54.0" />

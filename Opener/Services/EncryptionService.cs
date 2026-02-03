@@ -1,6 +1,8 @@
-using System;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.IO;
+using System.Diagnostics;
 
 namespace Opener.Services;
 
@@ -140,7 +142,61 @@ public static class EncryptionServiceFactory
             }
             return new PortableEncryptionService(password);
         }
-        return new DpapiEncryptionService();
+        
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return new DpapiEncryptionService();
+        }
+
+        // Cross-platform 'Local' fallback: Use a persistent generated machine key
+        return new MachineLocalEncryptionService();
     }
 }
+
+/// <summary>
+/// Provides 'Local' encryption on non-Windows platforms by generating and storing
+/// a unique machine/user key in the home directory.
+/// </summary>
+public class MachineLocalEncryptionService : IEncryptionService
+{
+    private readonly string _keyPath;
+    private readonly PortableEncryptionService _aesService;
+
+    public MachineLocalEncryptionService()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var dir = Path.Combine(home, ".opener");
+        if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        _keyPath = Path.Combine(dir, ".machine_key");
+
+        string key = GetOrCreateKey();
+        _aesService = new PortableEncryptionService(key);
+    }
+
+    private string GetOrCreateKey()
+    {
+        if (File.Exists(_keyPath))
+        {
+            return File.ReadAllText(_keyPath);
+        }
+
+        string newKey = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        File.WriteAllText(_keyPath, newKey);
+        
+        // Try to set permissions to 600 on Linux/macOS
+        try 
+        {
+            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                Process.Start("chmod", $"600 {_keyPath}");
+            }
+        } catch { /* ignore if chmod fails */ }
+
+        return newKey;
+    }
+
+    public string Encrypt(string plainText) => _aesService.Encrypt(plainText);
+    public string Decrypt(string cipherText) => _aesService.Decrypt(cipherText);
+}
+
 

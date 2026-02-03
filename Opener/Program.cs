@@ -17,8 +17,8 @@ class Program
         // 1. Setup Services
         var configService = new ConfigService();
         
-        // Only Windows supported for Credential Manager currently
-        ICredentialService credentialService = new WindowsCredentialService(); 
+        // Only Windows supported for Credential Manager currently, fallback to File on Linux
+        ICredentialService credentialService = CredentialServiceFactory.Create(); 
         
         IEncryptionService encryptionService = null!;
 
@@ -47,6 +47,9 @@ class Program
 
         var storageService = new StorageService(configService, encryptionService);
         var actionService = new ActionService();
+
+        // 1.5 Auto-initialize storage
+        storageService.Initialize();
 
         // 2. Define Commands
         var rootCommand = new RootCommand("Opener Tool - Quickly open links, paths, and data.");
@@ -250,73 +253,74 @@ class Program
 
         // --- EXISTING COMMANDS ---
 
-        var initCommand = new Command("init", "Initialize storage");
-        initCommand.SetHandler(() =>
-        {
-            storageService.Initialize();
-            AnsiConsole.MarkupLine("[green]Opener initialized.[/]");
-        });
-        rootCommand.AddCommand(initCommand);
-
         var addCommand = new Command("add", "Add a new key");
-        addCommand.AddArgument(new Argument<string>("key"));
-        addCommand.AddArgument(new Argument<string>("value"));
-        addCommand.AddOption(new Option<OKeyType>(new[] { "-t", "--type" }, "Type of the key"));
+        var addKeyArg = new Argument<string>("key");
+        var addValArg = new Argument<string>("value");
+        var addTypeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Type of the key");
+        addCommand.AddArgument(addKeyArg);
+        addCommand.AddArgument(addValArg);
+        addCommand.AddOption(addTypeOpt);
         addCommand.SetHandler((string k, string v, OKeyType t) =>
         {
             var keys = storageService.GetKeys();
-            if (keys.Any(x => x.Key.Equals(k, StringComparison.OrdinalIgnoreCase)))
+            if (keys.Any(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase)))
             {
                 AnsiConsole.MarkupLine($"[red]Key '{k}' already exists. Use update command.[/]");
                 return;
             }
-            keys.Add(new OKey { Key = k, Value = v, KeyType = t });
+            keys.Add(new OKey { Key = k ?? string.Empty, Value = v ?? string.Empty, KeyType = t });
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' added successfully![/]");
-        }, new Argument<string>("key"), new Argument<string>("value"), new Option<OKeyType>(new[] { "-t", "--type" }));
+        }, addKeyArg, addValArg, addTypeOpt);
         rootCommand.AddCommand(addCommand);
 
+        // UPDATE
         var updateCommand = new Command("update", "Update an existing key");
-        updateCommand.AddArgument(new Argument<string>("key"));
-        updateCommand.AddArgument(new Argument<string>("value"));
+        var upKeyArg = new Argument<string>("key");
+        var upValArg = new Argument<string>("value");
+        updateCommand.AddArgument(upKeyArg);
+        updateCommand.AddArgument(upValArg);
         updateCommand.SetHandler((string k, string v) =>
         {
             var keys = storageService.GetKeys();
-            var existing = keys.FirstOrDefault(x => x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
+            var existing = keys.FirstOrDefault(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
             if (existing == null) { AnsiConsole.MarkupLine($"[red]Key '{k}' not found.[/]"); return; }
-            existing.Value = v;
+            existing.Value = v ?? string.Empty;
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' updated successfully![/]");
-        }, new Argument<string>("key"), new Argument<string>("value"));
+        }, upKeyArg, upValArg);
         rootCommand.AddCommand(updateCommand);
 
+        // DELETE
         var deleteCommand = new Command("delete", "Delete a key");
-        deleteCommand.AddArgument(new Argument<string>("key"));
+        var delKeyArg = new Argument<string>("key");
+        deleteCommand.AddArgument(delKeyArg);
         deleteCommand.SetHandler((string k) =>
         {
             var keys = storageService.GetKeys();
-            var existing = keys.FirstOrDefault(x => x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
+            var existing = keys.FirstOrDefault(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
             if (existing == null) { AnsiConsole.MarkupLine($"[red]Key '{k}' not found.[/]"); return; }
             keys.Remove(existing);
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' deleted.[/]");
-        }, new Argument<string>("key"));
+        }, delKeyArg);
         rootCommand.AddCommand(deleteCommand);
 
+        // LIST
         var listCommand = new Command("list", "List all keys");
         listCommand.SetHandler(() =>
         {
             var keys = storageService.GetKeys();
-            if (keys.Count == 0) { AnsiConsole.MarkupLine("[yellow]No keys found.[/]"); return; }
+            if (keys == null || keys.Count == 0) { AnsiConsole.MarkupLine("[yellow]No keys found.[/]"); return; }
             var table = new Table();
             table.AddColumn("Key");
             table.AddColumn("Type");
             table.AddColumn("Value (Preview)");
-            foreach (var key in keys.OrderBy(x => x.Key))
+            foreach (var key in keys.Where(x => x != null).OrderBy(x => x.Key))
             {
-                string valPreview = key.Value.Length > 50 ? key.Value.Substring(0, 47) + "..." : key.Value;
+                string valPreview = (key.Value ?? string.Empty).Length > 50 ? key.Value!.Substring(0, 47) + "..." : (key.Value ?? string.Empty);
                 if(key.KeyType == OKeyType.Data || key.KeyType == OKeyType.JsonData) valPreview = "********";
-                table.AddRow(key.Key, key.KeyType.ToString(), Markup.Escape(valPreview));
+                table.AddRow(key.Key ?? "N/A", key.KeyType.ToString(), Markup.Escape(valPreview));
             }
             AnsiConsole.Write(table);
         });
@@ -331,7 +335,7 @@ class Program
                 return; 
             }
             var keys = storageService.GetKeys();
-            var foundKey = keys.FirstOrDefault(k => k.Key.Equals(keyResult, StringComparison.OrdinalIgnoreCase));
+            var foundKey = keys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(keyResult, StringComparison.OrdinalIgnoreCase));
             if (foundKey == null)
             {
                 AnsiConsole.MarkupLine($"[red]Key '{keyResult}' not found.[/]");

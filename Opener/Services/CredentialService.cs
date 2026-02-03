@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using System.Text;
@@ -10,6 +11,53 @@ public interface ICredentialService
     string? GetPassword();
     void SetPassword(string password);
     void ClearPassword();
+}
+
+public static class CredentialServiceFactory
+{
+    public static ICredentialService Create()
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return new WindowsCredentialService();
+        }
+        return new FileCredentialService();
+    }
+}
+
+/// <summary>
+/// Fallback for non-Windows platforms (e.g. Linux Docker).
+/// Stores password in a plain text file in the user's home directory.
+/// Note: In a real app, we'd use SecretService/Keyring on Linux, 
+/// but for a simple tool/testing, this is the fallback.
+/// </summary>
+public class FileCredentialService : ICredentialService
+{
+    private readonly string _path;
+
+    public FileCredentialService()
+    {
+        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        _path = Path.Combine(home, ".opener", ".internal_pass");
+    }
+
+    public string? GetPassword()
+    {
+        if (!File.Exists(_path)) return null;
+        try { return File.ReadAllText(_path); } catch { return null; }
+    }
+
+    public void SetPassword(string password)
+    {
+        var dir = Path.GetDirectoryName(_path);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+        File.WriteAllText(_path, password);
+    }
+
+    public void ClearPassword()
+    {
+        if (File.Exists(_path)) File.Delete(_path);
+    }
 }
 
 [SupportedOSPlatform("windows")]

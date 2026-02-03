@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+
+# Copy everything
+COPY . .
+
+# Build and pack
+RUN dotnet pack Opener/Opener.csproj -c Release -o /nupkg
+
+# Install the tool from the local package
+RUN dotnet tool install --global --add-source /nupkg com.chirravuris.opener
+
+# Add tool to path
+ENV PATH="/root/.dotnet/tools:${PATH}"
+
+# Make test script executable
+RUN chmod +x tests/integration_test.sh
+
+# Run integration tests
+CMD ["./tests/integration_test.sh"]

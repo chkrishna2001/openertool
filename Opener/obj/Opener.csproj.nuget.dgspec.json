@@ -5,10 +5,10 @@
   },
   "projects": {
     "C:\\Users\\chkri\\source\\repos\\openertool\\Opener\\Opener.csproj": {
-      "version": "1.0.0",
+      "version": "1.0.1",
       "restore": {
         "projectUniqueName": "C:\\Users\\chkri\\source\\repos\\openertool\\Opener\\Opener.csproj",
-        "projectName": "Opener.Tool",
+        "projectName": "com.chirravuris.opener",
         "projectPath": "C:\\Users\\chkri\\source\\repos\\openertool\\Opener\\Opener.csproj",
         "packagesPath": "C:\\Users\\chkri\\.nuget\\packages\\",
         "outputPath": "C:\\Users\\chkri\\source\\repos\\openertool\\Opener\\obj\\",

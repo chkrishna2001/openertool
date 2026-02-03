@@ -7,10 +7,15 @@ on:
     paths:
       - 'Opener/**'
       - '.github/workflows/**'
+      - 'tests/**'
 
 jobs:
-  build-and-publish:
-    runs-on: windows-latest # Windows required for the Credential Manager code paths (AOT build might need it too)
+  integration-tests:
+    name: Integration Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
     
     steps:
     - uses: actions/checkout@v4
@@ -18,18 +23,45 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.x' # Use Preview if 10 is not GA yet on runners, or 9.0/mock if 10 unavailable
-        # Note: Github Runners might not support .NET 10 yet. If fails, use 9.0 or preview/daily builds.
-        # But assuming user environment implies availability.
+        dotnet-version: '10.0.x'
 
-    - name: Restore dependencies
-      run: dotnet restore Opener.sln
+    - name: Pack and Install Tool Locally
+      shell: pwsh
+      run: |
+        dotnet pack Opener/Opener.csproj -c Release -o ./nupkg
+        dotnet tool install --global --add-source ./nupkg com.chirravuris.opener
+    
+    - name: Add Tool to Path (Windows)
+      if: runner.os == 'Windows'
+      run: echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      
+    - name: Add Tool to Path (Linux/macOS)
+      if: runner.os != 'Windows'
+      run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
 
-    - name: Build
-      run: dotnet build Opener.sln --configuration Release --no-restore
+    - name: Run Integration Tests
+      shell: pwsh
+      run: ./tests/integration_test.ps1
+
+  publish:
+    needs: integration-tests
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '10.0.x'
+
+    - name: Restore and Test (Unit)
+      run: |
+        dotnet restore Opener.sln
+        dotnet test Opener.sln --configuration Release --verbosity normal
 
     - name: Pack
-      run: dotnet pack Opener.sln --configuration Release --no-build --output ${{ github.workspace }}/nupkgs
+      run: dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs
 
     - name: Push to NuGet
       run: |

@@ -15,10 +15,9 @@ namespace Opener.Services;
 
 public class RestData
 {
-    public string Url { get; set; }
+    public string Url { get; set; } = string.Empty;
     public string Method { get; set; } = "GET";
-    public string Body { get; set; }
-    // Simple dictionary for headers could be added later
+    public string Body { get; set; } = string.Empty;
 }
 
 [JsonSerializable(typeof(RestData))]
@@ -59,97 +58,63 @@ public class ActionService : IActionService
     private void HandleWebPath(OKey key, string[] args)
     {
         string url = key.Value;
-        // Simple Placeholder replacement {0}, {1}
-        try
+        if (args != null && args.Length > 0 && url.Contains("{0}"))
         {
-            if (args != null && args.Length > 0)
-            {
-                // Verify if using numeric placeholders
-                if (url.Contains("{0}"))
-                {
-                    url = string.Format(url, args);
-                }
-                else
-                {
-                    // If no explicit format, maybe just append? Or do nothing?
-                    // User requirement: "WebPath can have placeholders ... o core dev"
-                    // If the user didn't put {0}, assume no replacement logic for now or custom placeholder logic?
-                    // Plan said: "Supports Placeholders... {0}".
-                }
-            }
-        }
-        catch (FormatException)
-        {
-            AnsiConsole.MarkupLine("[yellow]Warning: Format string mismatch. Opening original URL.[/]");
+            try { url = string.Format(url, args); } 
+            catch { AnsiConsole.MarkupLine("[yellow]Warning: Format string mismatch. Using raw URL.[/]"); }
         }
 
-        AnsiConsole.MarkupLine($"[green]Opening URL:[/] [link]{url}[/]");
         OpenUrl(url);
     }
 
     private void HandleLocalPath(OKey key, string[] args)
     {
-        string path = key.Value;
-        string arguments = args.Length > 0 ? string.Join(" ", args) : string.Empty;
-
-        AnsiConsole.MarkupLine($"[green]Starting Process:[/] {path} {arguments}");
-        
-        try 
+        var psi = new ProcessStartInfo
         {
-            var psi = new ProcessStartInfo
-            {
-                FileName = path,
-                Arguments = arguments,
-                UseShellExecute = true 
-            };
+            FileName = key.Value,
+            UseShellExecute = true
+        };
+        if (args != null) foreach (var arg in args) psi.ArgumentList.Add(arg);
+
+        try
+        {
             Process.Start(psi);
         }
-        catch(Exception ex)
+        catch
         {
-             AnsiConsole.MarkupLine($"[red]Error starting process:[/] {ex.Message}");
+            // Fallback for non-executable files or different platforms
+            OpenUrl(key.Value);
         }
     }
 
     private void HandleJsonData(OKey key)
     {
-        // Copy JSON to clipboard and pretty print
         try 
         {
-            // Validate it's valid JSON by parsing (no reflection needed)
             using var doc = JsonDocument.Parse(key.Value);
-            
-            // Copy to clipboard
             ClipboardService.SetText(key.Value);
-            AnsiConsole.MarkupLine($"[green]JSON Data copied to clipboard![/]");
-             
-            // Pretty print for display using Spectre.Console.Json
+            AnsiConsole.MarkupLine("[green]JSON Data copied to clipboard![/]");
             AnsiConsole.Write(new JsonText(key.Value));
         }
         catch
         {
-             // Not valid JSON, just copy text
              ClipboardService.SetText(key.Value);
-             AnsiConsole.MarkupLine($"[yellow]Value was not valid JSON, copied as plain text.[/]");
+             AnsiConsole.MarkupLine("[yellow]Value was not valid JSON, copied as plain text.[/]");
         }
     }
 
     private void HandleData(OKey key)
     {
         ClipboardService.SetText(key.Value);
-        AnsiConsole.MarkupLine($"[green]Data copied to clipboard![/]");
+        AnsiConsole.MarkupLine("[green]Data copied to clipboard![/]");
     }
 
     private async Task HandleRest(OKey key, string[] args)
     {
-        // Expect Value to be JSON of RestData
         try
         {
             var restData = JsonSerializer.Deserialize(key.Value, RestDataContext.Default.RestData);
-            if(restData == null) 
-            {
-                 AnsiConsole.MarkupLine("[red]Invalid Rest Configuration.[/]");
-                 return;
-            }
+            if(restData == null) return;
 
             string url = restData.Url;
             if (args != null && args.Length > 0 && url.Contains("{0}"))
@@ -171,15 +136,8 @@ public class ActionService : IActionService
             var content = await response.Content.ReadAsStringAsync();
 
             AnsiConsole.MarkupLine($"Status: {response.StatusCode}");
-            
-            try 
-            {
-                 AnsiConsole.Write(new JsonText(content));
-            }
-            catch
-            {
-                 AnsiConsole.WriteLine(content);
-            }
+            try { AnsiConsole.Write(new JsonText(content)); }
+            catch { AnsiConsole.WriteLine(content); }
         }
         catch(Exception ex)
         {
@@ -191,15 +149,9 @@ public class ActionService : IActionService
     {
         try
         {
-            Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            // Runtime specific hacks for opening browser
             if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             {
-                url = url.Replace("&", "^&");
-                Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
+                Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
             }
             else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
             {
@@ -209,10 +161,10 @@ public class ActionService : IActionService
             {
                 Process.Start("open", url);
             }
-            else
-            {
-                 AnsiConsole.MarkupLine($"[red]Could not open browser:[/] {ex.Message}");
-            }
+        }
+        catch
+        {
+             AnsiConsole.MarkupLine($"[red]Could not open:[/] {url}");
         }
     }
 }
