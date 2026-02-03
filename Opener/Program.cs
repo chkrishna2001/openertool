@@ -355,14 +355,30 @@ class Program
                 AnsiConsole.MarkupLine("Opener Tool - Use [bold]o --help[/] for details.");
                 return; 
             }
-            var keys = storageService.GetKeys();
-            var foundKey = keys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(keyResult, StringComparison.OrdinalIgnoreCase));
-            if (foundKey == null)
+            
+            try 
             {
-                AnsiConsole.MarkupLine($"[red]Key '{keyResult}' not found.[/]");
-                return;
+                var keys = storageService.GetKeys();
+                var foundKey = keys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(keyResult, StringComparison.OrdinalIgnoreCase));
+                if (foundKey == null)
+                {
+                    AnsiConsole.MarkupLine($"[red]Key '{keyResult}' not found.[/]");
+                    return;
+                }
+                await actionService.ExecuteAsync(foundKey, actArgs);
             }
-            await actionService.ExecuteAsync(foundKey, actArgs);
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Error:[/] {ex.Message}");
+                if (ex.InnerException != null) 
+                {
+                    AnsiConsole.MarkupLine($"[dim]{ex.InnerException.Message}[/]");
+                    if (ex.InnerException.Message.Contains("Failed to decrypt"))
+                    {
+                        AnsiConsole.MarkupLine("[yellow]Hint:[/] Are you using the correct encryption mode (Local vs Portable)?");
+                    }
+                }
+            }
         }, keyArgument, actArgsArgument);
 
         await new CommandLineBuilder(rootCommand)
