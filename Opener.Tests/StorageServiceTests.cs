@@ -46,4 +46,96 @@ public class StorageServiceTests
         
         if (File.Exists(_tempFile)) File.Delete(_tempFile);
     }
+
+    [Theory]
+    [InlineData(@"C:\Users\john\OneDrive\data\opener.dat")]
+    [InlineData(@"C:\Users\john\OneDrive - companyname\data\opener.dat")]
+    [InlineData(@"D:\OneDrive\Shared\opener.dat")]
+    public void IsPathOneDrive_DetectsOneDrivePaths(string onedrivePath)
+    {
+        // Arrange - using reflection to test private method
+        var method = typeof(StorageService).GetMethod(
+            "IsPathOneDrive", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        
+        // Act
+        var result = (bool?)method?.Invoke(null, new object[] { onedrivePath });
+
+        // Assert
+        Assert.True(result, $"Should detect OneDrive path: {onedrivePath}");
+    }
+
+    [Theory]
+    [InlineData(@"C:\Users\john\AppData\Local\data\opener.dat")]
+    [InlineData(@"C:\Users\john\Documents\data\opener.dat")]
+    [InlineData(@"D:\data\opener.dat")]
+    public void IsPathOneDrive_IgnoresNonOneDrivePaths(string regularPath)
+    {
+        // Arrange - using reflection to test private method
+        var method = typeof(StorageService).GetMethod(
+            "IsPathOneDrive", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
+        
+        // Act
+        var result = (bool?)method?.Invoke(null, new object[] { regularPath });
+
+        // Assert
+        Assert.False(result, $"Should not detect as OneDrive path: {regularPath}");
+    }
+
+    [Fact]
+    public void Initialize_DoesNotThrow_WhenStoragePathInaccessible()
+    {
+        // Arrange
+        var inaccessiblePath = Path.Combine(Path.GetTempPath(), "inaccessible_" + Guid.NewGuid(), "opener.dat");
+        _mockConfig.Setup(c => c.GetDataFilePath()).Returns(inaccessiblePath);
+        
+        _mockEncryptor.Setup(e => e.Encrypt(It.IsAny<string>())).Returns((string s) => s);
+        _mockEncryptor.Setup(e => e.Decrypt(It.IsAny<string>())).Returns((string s) => s);
+
+        var service = new StorageService(_mockConfig.Object, _mockEncryptor.Object);
+
+        // Act - Should not throw even though path is inaccessible
+        var exception = Record.Exception(() => service.Initialize());
+
+        // Assert - Initialize should log warning but not crash
+        Assert.Null(exception);
+    }
+
+    [Fact]
+    public void SaveKeys_WithNormalPath_WorksCorrectly()
+    {
+        // Arrange
+        var tempDir = Path.Combine(Path.GetTempPath(), "opener_test_" + Guid.NewGuid());
+        var filePath = Path.Combine(tempDir, "opener.dat");
+        
+        try
+        {
+            _mockConfig.Setup(c => c.GetDataFilePath()).Returns(filePath);
+            
+            _mockEncryptor.Setup(e => e.Encrypt(It.IsAny<string>())).Returns((string s) => s);
+            _mockEncryptor.Setup(e => e.Decrypt(It.IsAny<string>())).Returns((string s) => s);
+
+            var keys = new List<OKey>
+            {
+                new OKey { Key = "test", Value = "value" }
+            };
+
+            var service = new StorageService(_mockConfig.Object, _mockEncryptor.Object);
+
+            // Act
+            service.SaveKeys(keys);
+
+            // Assert
+            Assert.True(File.Exists(filePath));
+            var loaded = service.GetKeys();
+            Assert.Single(loaded);
+            Assert.Equal("test", loaded[0].Key);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, true);
+        }
+    }
 }

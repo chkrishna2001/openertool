@@ -51,7 +51,17 @@ class Program
         var actionService = new ActionService();
 
         // 1.5 Auto-initialize storage
-        storageService.Initialize();
+        try 
+        {
+            storageService.Initialize();
+        }
+        catch (Exception ex)
+        {
+            // Log the initialization warning but don't crash
+            // This allows users to run 'config set-location' to fix a broken storage path
+            AnsiConsole.MarkupLine($"[yellow]Warning:[/] Storage initialization failed: {ex.Message}");
+            AnsiConsole.MarkupLine("[yellow]Use 'opener config set-location <path>' to change storage location if needed.[/]");
+        }
 
         // 2. Define Commands
         var rootCommand = new RootCommand("Opener Tool - Quickly open links, paths, and data.");
