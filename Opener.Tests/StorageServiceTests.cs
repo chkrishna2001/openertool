@@ -47,42 +47,6 @@ public class StorageServiceTests
         if (File.Exists(_tempFile)) File.Delete(_tempFile);
     }
 
-    [Theory]
-    [InlineData(@"C:\Users\john\OneDrive\data\opener.dat")]
-    [InlineData(@"C:\Users\john\OneDrive - companyname\data\opener.dat")]
-    [InlineData(@"D:\OneDrive\Shared\opener.dat")]
-    public void IsPathOneDrive_DetectsOneDrivePaths(string onedrivePath)
-    {
-        // Arrange - using reflection to test private method
-        var method = typeof(StorageService).GetMethod(
-            "IsPathOneDrive", 
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        
-        // Act
-        var result = (bool?)method?.Invoke(null, new object[] { onedrivePath });
-
-        // Assert
-        Assert.True(result, $"Should detect OneDrive path: {onedrivePath}");
-    }
-
-    [Theory]
-    [InlineData(@"C:\Users\john\AppData\Local\data\opener.dat")]
-    [InlineData(@"C:\Users\john\Documents\data\opener.dat")]
-    [InlineData(@"D:\data\opener.dat")]
-    public void IsPathOneDrive_IgnoresNonOneDrivePaths(string regularPath)
-    {
-        // Arrange - using reflection to test private method
-        var method = typeof(StorageService).GetMethod(
-            "IsPathOneDrive", 
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-        
-        // Act
-        var result = (bool?)method?.Invoke(null, new object[] { regularPath });
-
-        // Assert
-        Assert.False(result, $"Should not detect as OneDrive path: {regularPath}");
-    }
-
     [Fact]
     public void Initialize_DoesNotThrow_WhenStoragePathInaccessible()
     {
