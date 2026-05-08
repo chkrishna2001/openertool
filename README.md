@@ -84,36 +84,48 @@ o add get-user "{ \"url\": \"https://api.github.com/users/{0}\", \"method\": \"G
 o get-user chkri
 ```
 
-## ☁️ Portable Mode & OneDrive Sync
+## ☁️ Portable Mode & Cloud Sync
 
-By default, Opener uses **Local Encryption** which is tied to your machine. To sync your keys via OneDrive or move them between computers, switch to **Portable Mode**.
+By default, Opener uses **Local Encryption** which is tied to your machine. For cross-platform sync and cloud storage, Opener supports multiple approaches:
 
-### Enable Portable Mode
-1. Set your storage location to a synced folder:
-   ```bash
-   o config set-location "/path/to/onedrive/opener.dat"
-   ```
-2. Enable portable encryption:
-   ```bash
-   o config set-encryption portable
-   ```
+### 1. Microsoft Graph API Integration (Recommended for OneDrive)
 
-### OneDrive Fallback Behavior
-
-**Note**: OneDrive's virtual filesystem layer can sometimes prevent direct file access from applications, even though you can access files normally in Windows Explorer.
-
-If Opener detects that your configured storage location is on OneDrive and cannot access it after multiple retry attempts, it will automatically:
-1. Log a warning message
-2. Fall back to using a local cache at `~/.opener/cache/opener.dat`
-3. Continue working with your keys from the local cache
-
-This ensures Opener remains functional even if the OneDrive sync engine has not fully materialized the folder. When you resolve the OneDrive access issue (e.g., by syncing the folder offline-first in Explorer), you can restore syncing by:
+The `cloud` command provides proper OneDrive access via Microsoft Graph API, which works reliably across **Windows, macOS, and Linux**:
 
 ```bash
-o config set-location "/path/to/onedrive/opener.dat"
+# Authenticate with your Microsoft account
+o cloud auth
+
+# Store data in OneDrive via Graph API
+o cloud set-location
+
+# Your keys are now synced to OneDrive automatically
 ```
 
-The next operation will attempt to use the OneDrive path again.
+This approach bypasses OneDrive's virtual filesystem layer and works on all platforms.
+
+### 2. Local Storage with Manual Sync
+
+For maximum compatibility, store keys locally and manually sync the encrypted file:
+
+```bash
+o config set-location "/path/to/local/folder"
+o config set-encryption portable
+# Then manually backup /path/to/local/folder/opener.dat to cloud
+```
+
+### Important Note on OneDrive Files On-Demand
+
+**If you use OneDrive's built-in folder sync:**
+- OneDrive **Files On-Demand** (Windows 10/11) creates placeholder files that don't work with direct file I/O
+- This affects any application trying to access unmaterialized files, not just Opener
+- Windows Explorer shows these files, but .NET applications cannot access them until materialized
+- **Solution**: Use the `cloud` command with Graph API instead, which bypasses this limitation
+
+This limitation does **not** apply to:
+- Google Drive (no native Linux support, but works on Windows/macOS)
+- Local storage
+- Microsoft Graph API (our recommended cross-platform solution)
 
 ## ⚙️ Configuration
 

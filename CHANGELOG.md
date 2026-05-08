@@ -8,8 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- Enhanced OneDrive fallback behavior: Opener now automatically falls back to a local cache (`~/.opener/cache/opener.dat`) if the configured OneDrive path becomes inaccessible.
-- Improved error messaging for OneDrive sync issues with guidance on fallback behavior.
+- **Important Finding**: Direct file I/O to OneDrive Files On-Demand fails across all .NET applications due to Windows virtual filesystem layer. This is not a bug in Opener but a platform limitation.
+- Removed ineffective retry logic and fallback mechanisms that attempted to work around OneDrive access issues.
+- Simplified error messages with guidance to use Microsoft Graph API for reliable OneDrive access.
+
+### To Be Added
+- Microsoft Graph API integration for reliable cross-platform OneDrive support.
+- Google Drive support via Google Drive API.
+- Cloud sync configuration management.
 
 ## [1.0.2] - 2026-05-08
 
