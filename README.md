@@ -98,6 +98,23 @@ By default, Opener uses **Local Encryption** which is tied to your machine. To s
    o config set-encryption portable
    ```
 
+### OneDrive Fallback Behavior
+
+**Note**: OneDrive's virtual filesystem layer can sometimes prevent direct file access from applications, even though you can access files normally in Windows Explorer.
+
+If Opener detects that your configured storage location is on OneDrive and cannot access it after multiple retry attempts, it will automatically:
+1. Log a warning message
+2. Fall back to using a local cache at `~/.opener/cache/opener.dat`
+3. Continue working with your keys from the local cache
+
+This ensures Opener remains functional even if the OneDrive sync engine has not fully materialized the folder. When you resolve the OneDrive access issue (e.g., by syncing the folder offline-first in Explorer), you can restore syncing by:
+
+```bash
+o config set-location "/path/to/onedrive/opener.dat"
+```
+
+The next operation will attempt to use the OneDrive path again.
+
 ## ⚙️ Configuration
 
 ```bash

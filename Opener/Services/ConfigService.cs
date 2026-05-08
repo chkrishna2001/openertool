@@ -85,6 +85,13 @@ public class ConfigService : IConfigService
             return;
         }
 
+        if (isOneDrivePath)
+        {
+            // OneDrive folders may be visible in Explorer but still reject CreateDirectory calls.
+            // Do not try to materialize them from .NET; use the existing folder as-is.
+            return;
+        }
+
         if (!isOneDrivePath)
         {
             // Standard path - no retry needed
@@ -134,15 +141,18 @@ public class ConfigService : IConfigService
             if (!string.IsNullOrEmpty(dir))
             {
                 bool isOneDrive = IsPathOneDrive(config.StorageLocation);
-                try
+                if (!isOneDrive)
                 {
-                    CreateDirectoryWithRetry(dir, isOneDrive);
-                }
-                catch (Exception ex)
-                {
-                    // Log warning but don't crash - the caller (StorageService.SaveKeys) 
-                    // will handle the error when it actually tries to write
-                    Console.Error.WriteLine($"Warning: Could not ensure directory exists: {ex.Message}");
+                    try
+                    {
+                        CreateDirectoryWithRetry(dir, isOneDrive);
+                    }
+                    catch (Exception ex)
+                    {
+                        // Log warning but don't crash - the caller (StorageService.SaveKeys) 
+                        // will handle the error when it actually tries to write
+                        Console.Error.WriteLine($"Warning: Could not ensure directory exists: {ex.Message}");
+                    }
                 }
             }
             return config.StorageLocation;
