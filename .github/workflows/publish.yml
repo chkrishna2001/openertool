@@ -4,10 +4,9 @@ on:
   push:
     branches:
       - main
-    paths:
-      - 'Opener/**'
-      - '.github/workflows/**'
-      - 'tests/**'
+    tags:
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   integration-tests:
@@ -48,6 +47,7 @@ jobs:
   publish:
     needs: integration-tests
     runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     
     steps:
     - uses: actions/checkout@v4
@@ -62,8 +62,22 @@ jobs:
         dotnet restore Opener.sln
         dotnet test Opener.sln --configuration Release --verbosity normal
 
+    - name: Derive Package Version from Tag
+      shell: pwsh
+      run: |
+        $version = $env:GITHUB_REF_NAME
+        if ($version.StartsWith('v')) {
+          $version = $version.Substring(1)
+        }
+
+        if ([string]::IsNullOrWhiteSpace($version)) {
+          throw 'Unable to determine package version from tag.'
+        }
+
+        "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
     - name: Pack
-      run: dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs
+      run: dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs /p:Version=${{ env.PACKAGE_VERSION }}
 
     - name: Push to NuGet
       run: |
