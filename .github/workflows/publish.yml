@@ -8,6 +8,9 @@ on:
       - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   integration-tests:
     name: Integration Test (${{ matrix.os }})
@@ -84,3 +87,30 @@ jobs:
         dotnet nuget push "${{ github.workspace }}\nupkgs\*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
       env:
         NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+
+    - name: Generate Release Notes from Changelog
+      shell: pwsh
+      run: |
+        $version = $env:PACKAGE_VERSION
+        $changelogPath = Join-Path $env:GITHUB_WORKSPACE 'CHANGELOG.md'
+        $outputPath = Join-Path $env:GITHUB_WORKSPACE 'release-notes.md'
+
+        $content = Get-Content $changelogPath -Raw
+        $pattern = "(?s)## \[$([regex]::Escape($version))\].*?(?=\r?\n## \[|\z)"
+        $match = [regex]::Match($content, $pattern)
+
+        if (-not $match.Success) {
+          throw "Release notes for version $version were not found in CHANGELOG.md."
+        }
+
+        $notes = $match.Value.Trim()
+        $notes | Out-File -FilePath $outputPath -Encoding utf8
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: ${{ github.ref_name }}
+        name: Release ${{ env.PACKAGE_VERSION }}
+        body_path: release-notes.md
+        draft: false
+        prerelease: false

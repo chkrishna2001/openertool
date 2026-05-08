@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-05-08
+
+### Changed
+- Added resilient storage handling for company OneDrive and other inaccessible cloud-synced paths.
+- Switched NuGet publishing to a tag-driven release flow with changelog-based release notes.
+- Added GitHub Release generation from the matching changelog section.
+
 ## [1.0.1] - 2026-02-03
 
 ### Added
