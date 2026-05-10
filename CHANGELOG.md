@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-05-10
+
+### Fixed
+- Relaxed framework runtime requirements so .NET 10 packages run on installed patch versions such as 10.0.6 instead of requiring the build machine patch version.
+- Scoped runtime framework versions per target framework so .NET 8 packages request .NET 8 and .NET 10 packages request .NET 10.
+- Ensured tag-based publish builds apply the tag version before packing, so the installed tool version matches the NuGet package version.
+
+### Changed
+- Simplified release packaging so NuGet packages are created only during tag-based publish runs.
+
 ## [1.0.3] - 2026-05-10
 
 ### Added

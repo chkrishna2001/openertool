@@ -55,7 +55,7 @@ jobs:
       shell: pwsh
       run: ./tests/integration_test.ps1
 
-  build-and-package:
+  build:
     needs: integration-tests
     runs-on: windows-latest
     if: github.ref == 'refs/heads/main'
@@ -82,18 +82,6 @@ jobs:
     - name: Run Integration Tests
       shell: pwsh
       run: ./tests/integration_test.ps1
-
-    - name: Pack
-      shell: pwsh
-      run: |
-        dotnet pack Opener.sln --configuration Release --output ./nupkg --no-build
-
-    - name: Upload NuGet Package Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: nupkg-${{ github.sha }}
-        path: ./nupkg/*.nupkg
-        retention-days: 30
 
   publish:
     needs: integration-tests
@@ -141,11 +129,20 @@ jobs:
         $notes = $match.Value.Trim()
         $notes | Out-File -FilePath $outputPath -Encoding utf8
 
-    - name: Download NuGet Package from commit
-      uses: actions/download-artifact@v4
-      with:
-        name: nupkg-${{ github.sha }}
-        path: ./nupkg
+    - name: Restore
+      run: dotnet restore Opener.sln
+
+    - name: Build
+      run: dotnet build Opener.sln --configuration Release --no-restore /p:Version=${{ env.PACKAGE_VERSION }}
+
+    - name: Pack
+      shell: pwsh
+      run: |
+        if (Test-Path ./nupkg) {
+          Remove-Item ./nupkg -Recurse -Force
+        }
+
+        dotnet pack Opener.sln --configuration Release --output ./nupkg --no-build /p:Version=$env:PACKAGE_VERSION
 
     - name: Push to NuGet
       run: |
