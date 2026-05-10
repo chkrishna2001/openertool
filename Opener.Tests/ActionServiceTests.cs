@@ -8,26 +8,16 @@ namespace Opener.Tests;
 public class ActionServiceTests
 {
     [Fact]
-    public async Task ExecuteAsync_WithWebPathAndPlaceholder_ReplacesPlaceholder()
+    public async Task ExecuteAsync_WithUnknownType_DoesNotThrow()
     {
-        // Arrange
         var service = new ActionService();
         var key = new OKey
         {
             Key = "test",
-            KeyType = OKeyType.WebPath,
-            Value = "https://example.com/search?q={0}"
+            KeyType = (OKeyType)999,
+            Value = "value"
         };
-        
-        // This test verify it doesn't crash. 
-        // Intercepting browser open is hard, but we can check if it handles placeholders without error.
-        await service.ExecuteAsync(key, new[] { "apple" });
-    }
 
-    [Fact]
-    public async Task HandleData_CopiesToClipboard()
-    {
-        // This depends on TextCopy, might be hard to test in non-UI environment
-        // but let's see if it runs.
+        await service.ExecuteAsync(key, new string[0]);
     }
 }

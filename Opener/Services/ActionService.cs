@@ -30,6 +30,13 @@ public interface IActionService
 
 public class ActionService : IActionService
 {
+    private readonly IConfigService? _configService;
+
+    public ActionService(IConfigService? configService = null)
+    {
+        _configService = configService;
+    }
+
     public async Task ExecuteAsync(OKey key, string[] args)
     {
         switch (key.KeyType)
@@ -57,14 +64,21 @@ public class ActionService : IActionService
 
     private void HandleWebPath(OKey key, string[] args)
     {
-        string url = key.Value;
-        if (args != null && args.Length > 0 && url.Contains("{0}"))
+        var conf = _configService?.GetConfig();
+        var resolved = UrlTemplateResolver.Resolve(
+            key.Value,
+            args,
+            conf?.GlobalUrlAliases,
+            conf?.GlobalDefaultParams,
+            key.UrlAliases,
+            key.DefaultParams);
+
+        foreach (var warning in resolved.Warnings)
         {
-            try { url = string.Format(url, args); } 
-            catch { AnsiConsole.MarkupLine("[yellow]Warning: Format string mismatch. Using raw URL.[/]"); }
+            AnsiConsole.MarkupLine($"[yellow]Warning:[/] {warning}");
         }
 
-        OpenUrl(url);
+        OpenUrl(resolved.Value);
     }
 
     private void HandleLocalPath(OKey key, string[] args)
@@ -116,11 +130,21 @@ public class ActionService : IActionService
             var restData = JsonSerializer.Deserialize(key.Value, RestDataContext.Default.RestData);
             if(restData == null) return;
 
-            string url = restData.Url;
-            if (args != null && args.Length > 0 && url.Contains("{0}"))
+            var conf = _configService?.GetConfig();
+            var resolved = UrlTemplateResolver.Resolve(
+                restData.Url,
+                args,
+                conf?.GlobalUrlAliases,
+                conf?.GlobalDefaultParams,
+                key.UrlAliases,
+                key.DefaultParams);
+
+            foreach (var warning in resolved.Warnings)
             {
-                 url = string.Format(url, args);
+                AnsiConsole.MarkupLine($"[yellow]Warning:[/] {warning}");
             }
+
+            var url = resolved.Value;
 
             AnsiConsole.MarkupLine($"[blue]{restData.Method}[/] {url}");
 

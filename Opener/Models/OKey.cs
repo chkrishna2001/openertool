@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace Opener.Models;
 
@@ -9,4 +10,6 @@ public class OKey
     public OKeyType KeyType { get; set; } = OKeyType.Data;
     public string Value { get; set; } = string.Empty; // Renamed from Path for clarity across types
     public string Description { get; set; } = string.Empty;
+    public Dictionary<string, Dictionary<string, string>> UrlAliases { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> DefaultParams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }

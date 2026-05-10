@@ -48,7 +48,7 @@ class Program
         }
 
         var storageService = new StorageService(configService, encryptionService);
-        var actionService = new ActionService();
+        var actionService = new ActionService(configService);
 
         // 1.5 Auto-initialize storage
         try 
@@ -288,10 +288,14 @@ class Program
         var addKeyArg = new Argument<string>("key");
         var addValArg = new Argument<string>("value");
         var addTypeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Type of the key");
+        var addUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "JSON string for UrlAliases (e.g. '{ \"env\": { \"d\": \"-dev\" } }')");
+        var addDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "JSON string for DefaultParams (e.g. '{ \"user\": \"kchirravuri\" }')");
         addCommand.AddArgument(addKeyArg);
         addCommand.AddArgument(addValArg);
         addCommand.AddOption(addTypeOpt);
-        addCommand.SetHandler((string k, string v, OKeyType t) =>
+        addCommand.AddOption(addUrlAliasesOpt);
+        addCommand.AddOption(addDefaultParamsOpt);
+        addCommand.SetHandler((string k, string v, OKeyType t, string? urlAliasesJson, string? defaultParamsJson) =>
         {
             var keys = storageService.GetKeys();
             if (keys.Any(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase)))
@@ -299,27 +303,57 @@ class Program
                 AnsiConsole.MarkupLine($"[red]Key '{k}' already exists. Use update command.[/]");
                 return;
             }
-            keys.Add(new OKey { Key = k ?? string.Empty, Value = v ?? string.Empty, KeyType = t });
+            var newKey = new OKey { Key = k ?? string.Empty, Value = v ?? string.Empty, KeyType = t };
+
+            if (!string.IsNullOrWhiteSpace(urlAliasesJson))
+            {
+                try { newKey.UrlAliases = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(urlAliasesJson) ?? newKey.UrlAliases; }
+                catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --url-aliases, ignoring."); }
+            }
+
+            if (!string.IsNullOrWhiteSpace(defaultParamsJson))
+            {
+                try { newKey.DefaultParams = JsonSerializer.Deserialize<Dictionary<string, string>>(defaultParamsJson) ?? newKey.DefaultParams; }
+                catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --default-params, ignoring."); }
+            }
+
+            keys.Add(newKey);
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' added successfully![/]");
-        }, addKeyArg, addValArg, addTypeOpt);
+        }, addKeyArg, addValArg, addTypeOpt, addUrlAliasesOpt, addDefaultParamsOpt);
         rootCommand.AddCommand(addCommand);
 
         // UPDATE
         var updateCommand = new Command("update", "Update an existing key");
         var upKeyArg = new Argument<string>("key");
         var upValArg = new Argument<string>("value");
+        var upUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "JSON string to replace UrlAliases for the key");
+        var upDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "JSON string to replace DefaultParams for the key");
         updateCommand.AddArgument(upKeyArg);
         updateCommand.AddArgument(upValArg);
-        updateCommand.SetHandler((string k, string v) =>
+        updateCommand.AddOption(upUrlAliasesOpt);
+        updateCommand.AddOption(upDefaultParamsOpt);
+        updateCommand.SetHandler((string k, string v, string? urlAliasesJson, string? defaultParamsJson) =>
         {
             var keys = storageService.GetKeys();
             var existing = keys.FirstOrDefault(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
             if (existing == null) { AnsiConsole.MarkupLine($"[red]Key '{k}' not found.[/]"); return; }
             existing.Value = v ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(urlAliasesJson))
+            {
+                try { existing.UrlAliases = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(urlAliasesJson) ?? existing.UrlAliases; }
+                catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --url-aliases, ignoring."); }
+            }
+
+            if (!string.IsNullOrWhiteSpace(defaultParamsJson))
+            {
+                try { existing.DefaultParams = JsonSerializer.Deserialize<Dictionary<string, string>>(defaultParamsJson) ?? existing.DefaultParams; }
+                catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --default-params, ignoring."); }
+            }
+
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' updated successfully![/]");
-        }, upKeyArg, upValArg);
+        }, upKeyArg, upValArg, upUrlAliasesOpt, upDefaultParamsOpt);
         rootCommand.AddCommand(updateCommand);
 
         // DELETE

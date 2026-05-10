@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -9,6 +10,8 @@ public class OpenerConfig
 {
     public string StorageLocation { get; set; } = string.Empty; // Empty = default AppData
     public string EncryptionMode { get; set; } = "local"; // "local" or "portable"
+    public Dictionary<string, Dictionary<string, string>> GlobalUrlAliases { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> GlobalDefaultParams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
 }
 
 [JsonSerializable(typeof(OpenerConfig))]

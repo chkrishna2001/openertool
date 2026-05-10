@@ -52,7 +52,7 @@ o list
 ### Key Types & Examples
 
 #### 1. Web Shortcuts (`WebPath`)
-Store long URLs and open them quickly. Supports `{0}` placeholders for dynamic arguments.
+Store long URLs and open them quickly. Supports both indexed placeholders (`{0}`) and named placeholders (`<env>`, `<region>`, `<user>`).
 
 ```bash
 # Simple URL
@@ -62,7 +62,28 @@ o google
 # Dynamic URL with placeholder
 o add jira "https://jira.company.com/browse/{0}" -t WebPath
 o jira PROJ-123  # Opens https://jira.company.com/browse/PROJ-123
+
+# Named placeholders with aliases/defaults (configured per key or globally)
+# Template: https://nexus<env>.bpc.com/<region>/<user>
+# env aliases: d -> -dev, u -> -uat, p -> ""
+# default user: kchirravuri
+o api d us krishna
+# Resolves to: https://nexus-dev.bpc.com/us/kchirravuri
+
+o api region=us u
+# Resolves to: https://nexus-uat.bpc.com/us/kchirravuri
+
+o api p us
+# Resolves to: https://nexus.bpc.com/us/kchirravuri
 ```
+
+Placeholder resolution rules:
+- Indexed placeholders are resolved first.
+- Named placeholders are resolved after indexed placeholders.
+- `key=value` args take precedence over positional order.
+- Remaining positional args are applied left-to-right by placeholder order in the URL.
+- Alias maps are applied per placeholder (for example, `env: { d: -dev, u: -uat, p: "" }`).
+- Defaults are used for missing named values.
 
 #### 2. Secrets & Clipboard (`Data`)
 Store API keys, connection strings, or passwords.
