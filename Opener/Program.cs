@@ -14,8 +14,8 @@ namespace Opener;
 
 class Program
 {
-    private const string UrlAliasJsonHelp = "JSON object shaped as { \"placeholder\": { \"input\": \"replacement\" } }. Example: '{ \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }'";
-    private const string DefaultParamsJsonHelp = "JSON object shaped as { \"placeholder\": \"defaultValue\" }. Example: '{ \"user\": \"kchirravuri\", \"region\": \"us\" }'";
+    private const string UrlAliasJsonHelp = "Inline JSON or a JSON file path. Shape: { \"placeholder\": { \"input\": \"replacement\" } }. Example file content: { \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }";
+    private const string DefaultParamsJsonHelp = "Inline JSON or a JSON file path. Shape: { \"placeholder\": \"defaultValue\" }. Example file content: { \"user\": \"kchirravuri\", \"region\": \"us\" }";
 
     static async Task Main(string[] args)
     {
@@ -89,8 +89,9 @@ class Program
             "Examples:\n" +
             "  o config show\n" +
             "  o config set-encryption portable --password my-secret\n" +
-            "  o config set-url-aliases '{ \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }'\n" +
-            "  o config set-default-params '{ \"user\": \"kchirravuri\" }'");
+            "  o config set-url-aliases env d=-dev u=-uat p=\n" +
+            "  o config set-url-aliases --file aliases.json\n" +
+            "  o config set-default-params user kchirravuri");
         
         var showConfig = new Command("show", "Show current storage path, encryption mode, global URL aliases, and global default params.");
         showConfig.SetHandler(() => 
@@ -213,28 +214,61 @@ class Program
 
         var setUrlAliases = new Command(
             "set-url-aliases",
-            "Set global URL alias maps for named placeholders.\n\n" +
+            "Set a global URL alias map for one placeholder, or replace all global alias maps from a JSON file.\n\n" +
             "Aliases translate compact input values before a URL template is opened. For a template containing <env>, this can turn 'd' into '-dev' or 'p' into an empty production suffix.\n\n" +
-            "Example:\n" +
-            "  o config set-url-aliases '{ \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }'");
-        var urlAliasesArg = new Argument<string>("json", UrlAliasJsonHelp);
-        setUrlAliases.AddArgument(urlAliasesArg);
-        setUrlAliases.SetHandler((string json) =>
+            "Examples:\n" +
+            "  o config set-url-aliases env d=-dev u=-uat p=\n" +
+            "  o config set-url-aliases region us=na eu=emea\n" +
+            "  o config set-url-aliases --file aliases.json");
+        var urlAliasesPlaceholderArg = new Argument<string?>("placeholder", "Named placeholder without angle brackets, for example env for <env>. Omit when using --file.") { Arity = ArgumentArity.ZeroOrOne };
+        var urlAliasesPairsArg = new Argument<string[]>("aliases", "Alias pairs in input=replacement form. Empty replacements are allowed, for example p=.") { Arity = ArgumentArity.ZeroOrMore };
+        var urlAliasesFileOpt = new Option<string?>(new[] { "--file" }, "Path to a JSON file containing all global URL alias maps.");
+        setUrlAliases.AddArgument(urlAliasesPlaceholderArg);
+        setUrlAliases.AddArgument(urlAliasesPairsArg);
+        setUrlAliases.AddOption(urlAliasesFileOpt);
+        setUrlAliases.SetHandler((string? placeholder, string[] pairs, string? file) =>
         {
-            try
+            var conf = configService.GetConfig();
+
+            if (!string.IsNullOrWhiteSpace(file))
             {
-                var aliases = JsonSerializer.Deserialize(json, OpenerJsonContext.Default.DictionaryStringDictionaryStringString)
-                    ?? new(StringComparer.OrdinalIgnoreCase);
-                var conf = configService.GetConfig();
-                conf.GlobalUrlAliases = aliases;
-                configService.SaveConfig(conf);
-                AnsiConsole.MarkupLine("[green]Global URL aliases updated.[/]");
+                try
+                {
+                    conf.GlobalUrlAliases = JsonSerializer.Deserialize(ReadJsonFile(file), OpenerJsonContext.Default.DictionaryStringDictionaryStringString)
+                        ?? new(StringComparer.OrdinalIgnoreCase);
+                    configService.SaveConfig(conf);
+                    AnsiConsole.MarkupLine("[green]Global URL aliases updated.[/]");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    AnsiConsole.MarkupLine($"[red]Unable to read alias JSON file:[/] {ex.Message}");
+                }
+
+                return;
             }
-            catch (JsonException ex)
+
+            if (string.IsNullOrWhiteSpace(placeholder))
             {
-                AnsiConsole.MarkupLine($"[red]Invalid alias JSON:[/] {ex.Message}");
+                AnsiConsole.MarkupLine("[red]Missing placeholder.[/] Use 'o config set-url-aliases env d=-dev' or 'o config set-url-aliases --file aliases.json'.");
+                return;
             }
-        }, urlAliasesArg);
+
+            if (pairs.Length == 0)
+            {
+                AnsiConsole.MarkupLine("[red]Missing alias pairs.[/] Use input=replacement pairs, for example d=-dev u=-uat p=.");
+                return;
+            }
+
+            if (!TryParsePairs(pairs, out var aliases, out var error))
+            {
+                AnsiConsole.MarkupLine($"[red]Invalid alias pair:[/] {error}");
+                return;
+            }
+
+            conf.GlobalUrlAliases[placeholder] = aliases;
+            configService.SaveConfig(conf);
+            AnsiConsole.MarkupLine($"[green]Global URL aliases updated for <{placeholder}>.[/]");
+        }, urlAliasesPlaceholderArg, urlAliasesPairsArg, urlAliasesFileOpt);
         configCommand.AddCommand(setUrlAliases);
 
         var clearUrlAliases = new Command("clear-url-aliases", "Clear all global URL alias maps. Per-key aliases are not changed.");
@@ -247,30 +281,68 @@ class Program
         });
         configCommand.AddCommand(clearUrlAliases);
 
+        var clearUrlAlias = new Command("clear-url-alias", "Clear one global URL alias map by placeholder name.");
+        var clearAliasNameArg = new Argument<string>("placeholder", "Named placeholder without angle brackets, for example env for <env>.");
+        clearUrlAlias.AddArgument(clearAliasNameArg);
+        clearUrlAlias.SetHandler((string placeholder) =>
+        {
+            var conf = configService.GetConfig();
+            if (conf.GlobalUrlAliases.Remove(placeholder))
+            {
+                configService.SaveConfig(conf);
+                AnsiConsole.MarkupLine($"[green]Global URL aliases cleared for <{placeholder}>.[/]");
+                return;
+            }
+
+            AnsiConsole.MarkupLine($"[yellow]No global URL aliases found for <{placeholder}>.[/]");
+        }, clearAliasNameArg);
+        configCommand.AddCommand(clearUrlAlias);
+
         var setDefaultParams = new Command(
             "set-default-params",
-            "Set global default values for named URL placeholders.\n\n" +
+            "Set one global default value, or replace all global defaults from a JSON file.\n\n" +
             "Defaults are used when a named placeholder is not supplied by positional args or key=value args.\n\n" +
-            "Example:\n" +
-            "  o config set-default-params '{ \"user\": \"kchirravuri\", \"region\": \"us\" }'");
-        var defaultParamsArg = new Argument<string>("json", DefaultParamsJsonHelp);
-        setDefaultParams.AddArgument(defaultParamsArg);
-        setDefaultParams.SetHandler((string json) =>
+            "Examples:\n" +
+            "  o config set-default-params user kchirravuri\n" +
+            "  o config set-default-params region us\n" +
+            "  o config set-default-params --file defaults.json");
+        var defaultPlaceholderArg = new Argument<string?>("placeholder", "Named placeholder without angle brackets, for example user for <user>. Omit when using --file.") { Arity = ArgumentArity.ZeroOrOne };
+        var defaultValueArg = new Argument<string?>("value", "Default value to use when the placeholder is omitted. Omit when using --file.") { Arity = ArgumentArity.ZeroOrOne };
+        var defaultParamsFileOpt = new Option<string?>(new[] { "--file" }, "Path to a JSON file containing all global default params.");
+        setDefaultParams.AddArgument(defaultPlaceholderArg);
+        setDefaultParams.AddArgument(defaultValueArg);
+        setDefaultParams.AddOption(defaultParamsFileOpt);
+        setDefaultParams.SetHandler((string? placeholder, string? value, string? file) =>
         {
-            try
+            var conf = configService.GetConfig();
+
+            if (!string.IsNullOrWhiteSpace(file))
             {
-                var defaults = JsonSerializer.Deserialize(json, OpenerJsonContext.Default.DictionaryStringString)
-                    ?? new(StringComparer.OrdinalIgnoreCase);
-                var conf = configService.GetConfig();
-                conf.GlobalDefaultParams = defaults;
-                configService.SaveConfig(conf);
-                AnsiConsole.MarkupLine("[green]Global default params updated.[/]");
+                try
+                {
+                    conf.GlobalDefaultParams = JsonSerializer.Deserialize(ReadJsonFile(file), OpenerJsonContext.Default.DictionaryStringString)
+                        ?? new(StringComparer.OrdinalIgnoreCase);
+                    configService.SaveConfig(conf);
+                    AnsiConsole.MarkupLine("[green]Global default params updated.[/]");
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+                {
+                    AnsiConsole.MarkupLine($"[red]Unable to read default params JSON file:[/] {ex.Message}");
+                }
+
+                return;
             }
-            catch (JsonException ex)
+
+            if (string.IsNullOrWhiteSpace(placeholder) || value == null)
             {
-                AnsiConsole.MarkupLine($"[red]Invalid default params JSON:[/] {ex.Message}");
+                AnsiConsole.MarkupLine("[red]Missing placeholder or value.[/] Use 'o config set-default-params user kchirravuri' or 'o config set-default-params --file defaults.json'.");
+                return;
             }
-        }, defaultParamsArg);
+
+            conf.GlobalDefaultParams[placeholder] = value;
+            configService.SaveConfig(conf);
+            AnsiConsole.MarkupLine($"[green]Global default param updated for <{placeholder}>.[/]");
+        }, defaultPlaceholderArg, defaultValueArg, defaultParamsFileOpt);
         configCommand.AddCommand(setDefaultParams);
 
         var clearDefaultParams = new Command("clear-default-params", "Clear all global default placeholder values. Per-key defaults are not changed.");
@@ -282,6 +354,23 @@ class Program
             AnsiConsole.MarkupLine("[green]Global default params cleared.[/]");
         });
         configCommand.AddCommand(clearDefaultParams);
+
+        var clearDefaultParam = new Command("clear-default-param", "Clear one global default value by placeholder name.");
+        var clearDefaultNameArg = new Argument<string>("placeholder", "Named placeholder without angle brackets, for example user for <user>.");
+        clearDefaultParam.AddArgument(clearDefaultNameArg);
+        clearDefaultParam.SetHandler((string placeholder) =>
+        {
+            var conf = configService.GetConfig();
+            if (conf.GlobalDefaultParams.Remove(placeholder))
+            {
+                configService.SaveConfig(conf);
+                AnsiConsole.MarkupLine($"[green]Global default param cleared for <{placeholder}>.[/]");
+                return;
+            }
+
+            AnsiConsole.MarkupLine($"[yellow]No global default param found for <{placeholder}>.[/]");
+        }, clearDefaultNameArg);
+        configCommand.AddCommand(clearDefaultParam);
 
         rootCommand.AddCommand(configCommand);
 
@@ -400,7 +489,9 @@ class Program
             "Examples:\n" +
             "  o add token \"secret-value\" -t Data\n" +
             "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
-            "  o add api \"https://nexus<env>.bpc.com/<region>/<user>\" -t WebPath --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }' --default-params '{ \"user\": \"kchirravuri\" }'");
+            "  o add api \"https://nexus<env>.bpc.com/<region>/<user>\" -t WebPath\n" +
+            "  o config set-url-aliases env d=-dev u=-uat p=\n" +
+            "  o config set-default-params user kchirravuri");
         var addKeyArg = new Argument<string>("key", "Unique key name, for example jira or api.");
         var addValArg = new Argument<string>("value", "Stored value. Meaning depends on --type: URL template, local path, data, JSON, or REST JSON.");
         var addTypeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Key type: WebPath, LocalPath, Data, JsonData, or Rest.");
@@ -421,15 +512,17 @@ class Program
             }
             var newKey = new OKey { Key = k ?? string.Empty, Value = v ?? string.Empty, KeyType = t };
 
-            if (!string.IsNullOrWhiteSpace(urlAliasesJson))
+            var resolvedUrlAliasesJson = ResolveJsonInput(urlAliasesJson);
+            if (!string.IsNullOrWhiteSpace(resolvedUrlAliasesJson))
             {
-                try { newKey.UrlAliases = JsonSerializer.Deserialize(urlAliasesJson, OpenerJsonContext.Default.DictionaryStringDictionaryStringString) ?? newKey.UrlAliases; }
+                try { newKey.UrlAliases = JsonSerializer.Deserialize(resolvedUrlAliasesJson, OpenerJsonContext.Default.DictionaryStringDictionaryStringString) ?? newKey.UrlAliases; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --url-aliases, ignoring."); }
             }
 
-            if (!string.IsNullOrWhiteSpace(defaultParamsJson))
+            var resolvedDefaultParamsJson = ResolveJsonInput(defaultParamsJson);
+            if (!string.IsNullOrWhiteSpace(resolvedDefaultParamsJson))
             {
-                try { newKey.DefaultParams = JsonSerializer.Deserialize(defaultParamsJson, OpenerJsonContext.Default.DictionaryStringString) ?? newKey.DefaultParams; }
+                try { newKey.DefaultParams = JsonSerializer.Deserialize(resolvedDefaultParamsJson, OpenerJsonContext.Default.DictionaryStringString) ?? newKey.DefaultParams; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --default-params, ignoring."); }
             }
 
@@ -445,7 +538,8 @@ class Program
             "Update an existing key's value and optionally replace its per-key URL aliases/default params.\n\n" +
             "Examples:\n" +
             "  o update jira \"https://jira.company.com/browse/{0}\"\n" +
-            "  o update api \"https://nexus<env>.bpc.com/<region>/<user>\" --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }'");
+            "  o update api \"https://nexus<env>.bpc.com/<region>/<user>\"\n" +
+            "  o config set-url-aliases env d=-dev u=-uat p=");
         var upKeyArg = new Argument<string>("key", "Existing key name to update.");
         var upValArg = new Argument<string>("value", "Replacement stored value.");
         var upUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "Replace per-key alias map JSON. " + UrlAliasJsonHelp);
@@ -460,15 +554,17 @@ class Program
             var existing = keys.FirstOrDefault(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
             if (existing == null) { AnsiConsole.MarkupLine($"[red]Key '{k}' not found.[/]"); return; }
             existing.Value = v ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(urlAliasesJson))
+            var resolvedUrlAliasesJson = ResolveJsonInput(urlAliasesJson);
+            if (!string.IsNullOrWhiteSpace(resolvedUrlAliasesJson))
             {
-                try { existing.UrlAliases = JsonSerializer.Deserialize(urlAliasesJson, OpenerJsonContext.Default.DictionaryStringDictionaryStringString) ?? existing.UrlAliases; }
+                try { existing.UrlAliases = JsonSerializer.Deserialize(resolvedUrlAliasesJson, OpenerJsonContext.Default.DictionaryStringDictionaryStringString) ?? existing.UrlAliases; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --url-aliases, ignoring."); }
             }
 
-            if (!string.IsNullOrWhiteSpace(defaultParamsJson))
+            var resolvedDefaultParamsJson = ResolveJsonInput(defaultParamsJson);
+            if (!string.IsNullOrWhiteSpace(resolvedDefaultParamsJson))
             {
-                try { existing.DefaultParams = JsonSerializer.Deserialize(defaultParamsJson, OpenerJsonContext.Default.DictionaryStringString) ?? existing.DefaultParams; }
+                try { existing.DefaultParams = JsonSerializer.Deserialize(resolvedDefaultParamsJson, OpenerJsonContext.Default.DictionaryStringString) ?? existing.DefaultParams; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --default-params, ignoring."); }
             }
 
@@ -554,5 +650,52 @@ class Program
             .UseDefaults()
             .Build()
             .InvokeAsync(args);
+    }
+
+    private static bool TryParsePairs(string[] pairs, out Dictionary<string, string> parsed, out string error)
+    {
+        parsed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        error = string.Empty;
+
+        foreach (var pair in pairs)
+        {
+            var separatorIndex = pair.IndexOf('=');
+            if (separatorIndex <= 0)
+            {
+                error = $"{pair}. Use input=replacement, for example d=-dev or p=.";
+                return false;
+            }
+
+            var key = pair.Substring(0, separatorIndex).Trim();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                error = $"{pair}. Alias input cannot be empty.";
+                return false;
+            }
+
+            parsed[key] = pair.Substring(separatorIndex + 1);
+        }
+
+        return true;
+    }
+
+    private static string ResolveJsonInput(string? jsonOrFile)
+    {
+        if (string.IsNullOrWhiteSpace(jsonOrFile))
+        {
+            return string.Empty;
+        }
+
+        if (File.Exists(jsonOrFile))
+        {
+            return ReadJsonFile(jsonOrFile);
+        }
+
+        return jsonOrFile;
+    }
+
+    private static string ReadJsonFile(string path)
+    {
+        return File.ReadAllText(path);
     }
 }

@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-05-10
+
+### Changed
+- Simplified global URL alias configuration to support direct pair syntax, such as `o config set-url-aliases env d=-dev u=-uat p=`.
+- Simplified global default parameter configuration to support direct syntax, such as `o config set-default-params user kchirravuri`.
+- Added `--file` support to bulk-load global aliases and defaults without shell JSON quoting.
+- Updated command help to document the simplified alias/default configuration flow.
+
+### Fixed
+- Avoided PowerShell JSON quoting issues for common alias/default configuration workflows.
+
 ## [1.0.5] - 2026-05-10
 
 ### Added
