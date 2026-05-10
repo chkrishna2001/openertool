@@ -13,20 +13,24 @@ permissions:
 
 jobs:
   integration-tests:
-    name: Integration Test (${{ matrix.os }})
+    name: Integration Test (.NET ${{ matrix.dotnet-version }} on ${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false  # Ensure we see results for all platforms
+      fail-fast: false  # Ensure we see results for all platforms and versions
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
+        dotnet-version: ['8.0.x', '10.0.x']
     
     steps:
     - uses: actions/checkout@v4
     
-    - name: Setup .NET
+    - name: Setup .NET ${{ matrix.dotnet-version }}
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.x'
+        dotnet-version: ${{ matrix.dotnet-version }}
+
+    - name: Run Unit Tests
+      run: dotnet test Opener.Tests/Opener.Tests.csproj -c Release --verbosity normal
 
     - name: Pack and Install Tool Locally
       shell: pwsh
@@ -58,9 +62,11 @@ jobs:
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
-        dotnet-version: '10.0.x'
+        dotnet-version: |
+          8.0.x
+          10.0.x
 
-    - name: Restore and Test (Unit)
+    - name: Restore and Test (Unit - All Frameworks)
       run: |
         dotnet restore Opener.sln
         dotnet test Opener.sln --configuration Release --verbosity normal

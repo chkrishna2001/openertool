@@ -4,20 +4,26 @@ WORKDIR /src
 # Copy everything
 COPY . .
 
-# Build and pack
+# Build and test all target frameworks
+RUN dotnet build Opener/Opener.csproj -c Release
+
+# Run unit tests on both frameworks
+RUN dotnet test Opener.Tests/Opener.Tests.csproj -c Release --verbosity normal
+
+# Pack for both frameworks (multi-targeting creates both in the package)
 RUN dotnet pack Opener/Opener.csproj -c Release -o /nupkg
 
-# Install the tool from the local package
+# Install the tool from the local package (uses net10.0 by default on Linux)
 RUN dotnet tool install --global --add-source /nupkg com.chirravuris.opener
 
 # Add tool to path
 ENV PATH="/root/.dotnet/tools:${PATH}"
 
-# Ensure we have PowerShell for the script
-RUN apt-get update && apt-get install -y powershell || true
+# Ensure we have bash and necessary utilities
+RUN apt-get update && apt-get install -y bash curl
 
-# Run integration tests using pwsh (installed in dotnet sdk image usually, or we use the shell one)
-# Actually mcr.microsoft.com/dotnet/sdk:10.0 has pwsh? Let's check or just use the .sh for linux
-# But since we want to debug the .ps1 failure, let's try to run it with pwsh.
+# Run integration tests using bash script
+COPY tests/integration_test.sh /test.sh
+RUN chmod +x /test.sh
 
-CMD ["pwsh", "./tests/integration_test.ps1"]
+CMD ["/test.sh"]

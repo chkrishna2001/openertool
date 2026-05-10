@@ -307,13 +307,13 @@ class Program
 
             if (!string.IsNullOrWhiteSpace(urlAliasesJson))
             {
-                try { newKey.UrlAliases = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(urlAliasesJson) ?? newKey.UrlAliases; }
+                try { newKey.UrlAliases = JsonSerializer.Deserialize(urlAliasesJson, OpenerJsonContext.Default.DictionaryStringDictionaryStringString) ?? newKey.UrlAliases; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --url-aliases, ignoring."); }
             }
 
             if (!string.IsNullOrWhiteSpace(defaultParamsJson))
             {
-                try { newKey.DefaultParams = JsonSerializer.Deserialize<Dictionary<string, string>>(defaultParamsJson) ?? newKey.DefaultParams; }
+                try { newKey.DefaultParams = JsonSerializer.Deserialize(defaultParamsJson, OpenerJsonContext.Default.DictionaryStringString) ?? newKey.DefaultParams; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --default-params, ignoring."); }
             }
 
@@ -341,13 +341,13 @@ class Program
             existing.Value = v ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(urlAliasesJson))
             {
-                try { existing.UrlAliases = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, string>>>(urlAliasesJson) ?? existing.UrlAliases; }
+                try { existing.UrlAliases = JsonSerializer.Deserialize(urlAliasesJson, OpenerJsonContext.Default.DictionaryStringDictionaryStringString) ?? existing.UrlAliases; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --url-aliases, ignoring."); }
             }
 
             if (!string.IsNullOrWhiteSpace(defaultParamsJson))
             {
-                try { existing.DefaultParams = JsonSerializer.Deserialize<Dictionary<string, string>>(defaultParamsJson) ?? existing.DefaultParams; }
+                try { existing.DefaultParams = JsonSerializer.Deserialize(defaultParamsJson, OpenerJsonContext.Default.DictionaryStringString) ?? existing.DefaultParams; }
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --default-params, ignoring."); }
             }
 

@@ -1,0 +1,84 @@
+name: AOT Native Build Validation
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'Opener/**'
+      - 'Opener.Tests/**'
+      - '.github/workflows/aot-validation.yml'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  aot-build:
+    name: AOT Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: |
+          8.0.x
+          10.0.x
+
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y clang zlib1g-dev
+
+    - name: Install dependencies (macOS)
+      if: runner.os == 'macOS'
+      run: brew install llvm
+
+    - name: Build AOT for current platform
+      run: |
+        $rid = "${{ runner.os }}" -eq "Windows" ? "win-x64" : ("${{ runner.os }}" -eq "Linux" ? "linux-x64" : "osx-x64")
+        dotnet publish Opener/Opener.csproj `
+          -c Release `
+          -f net10.0 `
+          -r $rid `
+          --self-contained `
+          -p:PublishAot=true `
+          -o "./publish-aot/$rid"
+      shell: pwsh
+
+    - name: Verify executable exists
+      run: |
+        $exeName = "${{ runner.os }}" -eq "Windows" ? "Opener.exe" : "Opener"
+        $exePath = "./publish-aot/${{ runner.os == 'Windows' && 'win-x64' || (runner.os == 'Linux' && 'linux-x64' || 'osx-x64') }}/$exeName"
+        if (-not (Test-Path $exePath)) {
+          throw "Executable not found at $exePath"
+        }
+        Write-Host "Executable size: $((Get-Item $exePath).Length / 1MB) MB"
+      shell: pwsh
+
+    - name: Test AOT binary
+      run: |
+        $exePath = if ('${{ runner.os }}' -eq 'Windows') {
+          '.\publish-aot\win-x64\Opener.exe'
+        } elseif ('${{ runner.os }}' -eq 'Linux') {
+          './publish-aot/linux-x64/Opener'
+        } else {
+          './publish-aot/osx-x64/Opener'
+        }
+        & $exePath --help
+      shell: pwsh
+
+    - name: Upload AOT binary
+      uses: actions/upload-artifact@v4
+      with:
+        name: aot-binary-${{ runner.os }}
+        path: ./publish-aot/
+        retention-days: 5
