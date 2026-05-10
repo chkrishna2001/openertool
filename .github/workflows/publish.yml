@@ -145,8 +145,16 @@ jobs:
         dotnet pack Opener.sln --configuration Release --output ./nupkg --no-build /p:Version=$env:PACKAGE_VERSION
 
     - name: Push to NuGet
+      shell: pwsh
       run: |
-        dotnet nuget push "./nupkg/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+        $packages = Get-ChildItem ./nupkg -Filter *.nupkg
+        if ($packages.Count -eq 0) {
+          throw 'No NuGet packages were found in ./nupkg.'
+        }
+
+        foreach ($package in $packages) {
+          dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+        }
       env:
         NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
 
