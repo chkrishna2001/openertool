@@ -39,21 +39,26 @@ jobs:
     - name: Pack and Install Tool Locally
       shell: pwsh
       run: |
+        if (Test-Path ./nupkg) {
+          Remove-Item ./nupkg -Recurse -Force
+        }
+
+        $toolPath = Join-Path $env:GITHUB_WORKSPACE '.tools'
+        if (Test-Path $toolPath) {
+          Remove-Item $toolPath -Recurse -Force
+        }
+
         dotnet build Opener/Opener.csproj -c Release
         dotnet pack Opener/Opener.csproj -c Release -o ./nupkg --no-build
-        dotnet tool install --global --add-source ./nupkg com.chirravuris.opener
-    
-    - name: Add Tool to Path (Windows)
-      if: runner.os == 'Windows'
-      run: echo "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-      
-    - name: Add Tool to Path (Linux/macOS)
-      if: runner.os != 'Windows'
-      run: echo "$HOME/.dotnet/tools" >> $GITHUB_PATH
+        dotnet tool install --tool-path $toolPath --add-source ./nupkg com.chirravuris.opener
+
+        $commandName = if ($IsWindows) { 'o.exe' } else { 'o' }
+        $commandPath = Join-Path $toolPath $commandName
+        "OPENER_COMMAND=$commandPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
     - name: Run Integration Tests
       shell: pwsh
-      run: ./tests/integration_test.ps1
+      run: ./tests/integration_test.ps1 -OpenerCommand $env:OPENER_COMMAND
 
   build:
     needs: integration-tests
@@ -78,10 +83,6 @@ jobs:
 
     - name: Build
       run: dotnet build Opener.sln --configuration Release --no-restore
-
-    - name: Run Integration Tests
-      shell: pwsh
-      run: ./tests/integration_test.ps1
 
   publish:
     needs: integration-tests
