@@ -106,8 +106,7 @@ jobs:
       shell: pwsh
       run: |
         $releaseNotesPath = Join-Path $env:GITHUB_WORKSPACE 'release-notes.md'
-        $releaseNotes = Get-Content $releaseNotesPath -Raw
-        dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs /p:Version=${{ env.PACKAGE_VERSION }} "/p:PackageReleaseNotes=$releaseNotes"
+        dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs /p:Version=${{ env.PACKAGE_VERSION }} /p:PackageReleaseNotesFile=$releaseNotesPath
 
     - name: Push to NuGet
       run: |

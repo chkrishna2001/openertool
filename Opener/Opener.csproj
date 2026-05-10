@@ -11,6 +11,7 @@
     <ToolCommandName>o</ToolCommandName>
     <PackageId>com.chirravuris.opener</PackageId>
     <Version>1.0.1</Version>
+    <PackageReleaseNotesFile>release-notes.md</PackageReleaseNotesFile>
   </PropertyGroup>
 
   <ItemGroup>
