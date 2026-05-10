@@ -14,6 +14,9 @@ namespace Opener;
 
 class Program
 {
+    private const string UrlAliasJsonHelp = "JSON object shaped as { \"placeholder\": { \"input\": \"replacement\" } }. Example: '{ \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }'";
+    private const string DefaultParamsJsonHelp = "JSON object shaped as { \"placeholder\": \"defaultValue\" }. Example: '{ \"user\": \"kchirravuri\", \"region\": \"us\" }'";
+
     static async Task Main(string[] args)
     {
         // 1. Setup Services
@@ -64,23 +67,41 @@ class Program
         }
 
         // 2. Define Commands
-        var rootCommand = new RootCommand("Opener Tool - Quickly open links, paths, and data.");
+        var rootCommand = new RootCommand(
+            "Opener Tool - quickly open links, paths, stored data, and REST shortcuts.\n\n" +
+            "Examples:\n" +
+            "  o list\n" +
+            "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
+            "  o jira PROJ-123\n" +
+            "  o add api \"https://nexus<env>.bpc.com/<region>/<user>\" -t WebPath --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }' --default-params '{ \"user\": \"kchirravuri\" }'\n" +
+            "  o api env=d region=us");
 
         // --- Arguments for Implicit Key ---
-        var keyArgument = new Argument<string>("key", "The key to act upon") { Arity = ArgumentArity.ZeroOrOne };
-        var actArgsArgument = new Argument<string[]>("args", "Arguments for the action") { Arity = ArgumentArity.ZeroOrMore };
+        var keyArgument = new Argument<string>("key", "Stored key to execute. Use 'o list' to see available keys.") { Arity = ArgumentArity.ZeroOrOne, IsHidden = true };
+        var actArgsArgument = new Argument<string[]>("args", "Arguments passed to the key action. URL templates accept positional values or named values like env=d region=us.") { Arity = ArgumentArity.ZeroOrMore, IsHidden = true };
         rootCommand.AddArgument(keyArgument);
         rootCommand.AddArgument(actArgsArgument);
 
         // --- CONFIG Command ---
-        var configCommand = new Command("config", "Manage configuration");
+        var configCommand = new Command(
+            "config",
+            "Manage storage, encryption, and global URL template settings.\n\n" +
+            "Examples:\n" +
+            "  o config show\n" +
+            "  o config set-encryption portable --password my-secret\n" +
+            "  o config set-url-aliases '{ \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }'\n" +
+            "  o config set-default-params '{ \"user\": \"kchirravuri\" }'");
         
-        var showConfig = new Command("show", "Show current configuration");
+        var showConfig = new Command("show", "Show current storage path, encryption mode, global URL aliases, and global default params.");
         showConfig.SetHandler(() => 
         {
             var conf = configService.GetConfig();
             AnsiConsole.MarkupLine($"[bold]Storage Location:[/] {configService.GetDataFilePath()}");
             AnsiConsole.MarkupLine($"[bold]Encryption Mode:[/] {conf.EncryptionMode}");
+            AnsiConsole.MarkupLine("[bold]Global URL Aliases:[/]");
+            Console.WriteLine(JsonSerializer.Serialize(conf.GlobalUrlAliases, OpenerJsonContext.Default.DictionaryStringDictionaryStringString));
+            AnsiConsole.MarkupLine("[bold]Global Default Params:[/]");
+            Console.WriteLine(JsonSerializer.Serialize(conf.GlobalDefaultParams, OpenerJsonContext.Default.DictionaryStringString));
             if (conf.EncryptionMode == "portable")
             {
                 AnsiConsole.MarkupLine("[dim](Password is cached in Windows Credential Manager)[/]");
@@ -88,8 +109,12 @@ class Program
         });
         configCommand.AddCommand(showConfig);
 
-        var setLocation = new Command("set-location", "Set custom storage location");
-        var pathArg = new Argument<string>("path", "Full path to opener.dat file (e.g. OneDrive path)");
+        var setLocation = new Command(
+            "set-location",
+            "Set a custom encrypted data-file path.\n\n" +
+            "Example:\n" +
+            "  o config set-location \"C:\\Users\\me\\OneDrive\\opener.dat\"");
+        var pathArg = new Argument<string>("path", "Full path to opener.dat, including the file name.");
         setLocation.AddArgument(pathArg);
         setLocation.SetHandler((string path) => 
         {
@@ -105,9 +130,14 @@ class Program
         }, pathArg);
         configCommand.AddCommand(setLocation);
 
-        var setEncryption = new Command("set-encryption", "Set encryption mode (local/portable)");
-        var modeArg = new Argument<string>("mode", "local or portable");
-        var setEncPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for portable mode");
+        var setEncryption = new Command(
+            "set-encryption",
+            "Switch between local machine encryption and portable password encryption.\n\n" +
+            "Examples:\n" +
+            "  o config set-encryption local\n" +
+            "  o config set-encryption portable --password my-secret");
+        var modeArg = new Argument<string>("mode", "Encryption mode: local or portable.");
+        var setEncPassOpt = new Option<string>(new[] { "-p", "--password" }, "Portable-mode password. Omit it to be prompted interactively.");
         setEncryption.AddArgument(modeArg);
         setEncryption.AddOption(setEncPassOpt);
         setEncryption.SetHandler((string mode, string? passInput) => 
@@ -173,7 +203,7 @@ class Program
         }, modeArg, setEncPassOpt);
         configCommand.AddCommand(setEncryption);
         
-        var clearPass = new Command("clear-password", "Clear cached portable password");
+        var clearPass = new Command("clear-password", "Clear the cached portable-mode password from the local credential store.");
         clearPass.SetHandler(() => 
         {
             credentialService.ClearPassword();
@@ -181,12 +211,88 @@ class Program
         });
         configCommand.AddCommand(clearPass);
 
+        var setUrlAliases = new Command(
+            "set-url-aliases",
+            "Set global URL alias maps for named placeholders.\n\n" +
+            "Aliases translate compact input values before a URL template is opened. For a template containing <env>, this can turn 'd' into '-dev' or 'p' into an empty production suffix.\n\n" +
+            "Example:\n" +
+            "  o config set-url-aliases '{ \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }'");
+        var urlAliasesArg = new Argument<string>("json", UrlAliasJsonHelp);
+        setUrlAliases.AddArgument(urlAliasesArg);
+        setUrlAliases.SetHandler((string json) =>
+        {
+            try
+            {
+                var aliases = JsonSerializer.Deserialize(json, OpenerJsonContext.Default.DictionaryStringDictionaryStringString)
+                    ?? new(StringComparer.OrdinalIgnoreCase);
+                var conf = configService.GetConfig();
+                conf.GlobalUrlAliases = aliases;
+                configService.SaveConfig(conf);
+                AnsiConsole.MarkupLine("[green]Global URL aliases updated.[/]");
+            }
+            catch (JsonException ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Invalid alias JSON:[/] {ex.Message}");
+            }
+        }, urlAliasesArg);
+        configCommand.AddCommand(setUrlAliases);
+
+        var clearUrlAliases = new Command("clear-url-aliases", "Clear all global URL alias maps. Per-key aliases are not changed.");
+        clearUrlAliases.SetHandler(() =>
+        {
+            var conf = configService.GetConfig();
+            conf.GlobalUrlAliases.Clear();
+            configService.SaveConfig(conf);
+            AnsiConsole.MarkupLine("[green]Global URL aliases cleared.[/]");
+        });
+        configCommand.AddCommand(clearUrlAliases);
+
+        var setDefaultParams = new Command(
+            "set-default-params",
+            "Set global default values for named URL placeholders.\n\n" +
+            "Defaults are used when a named placeholder is not supplied by positional args or key=value args.\n\n" +
+            "Example:\n" +
+            "  o config set-default-params '{ \"user\": \"kchirravuri\", \"region\": \"us\" }'");
+        var defaultParamsArg = new Argument<string>("json", DefaultParamsJsonHelp);
+        setDefaultParams.AddArgument(defaultParamsArg);
+        setDefaultParams.SetHandler((string json) =>
+        {
+            try
+            {
+                var defaults = JsonSerializer.Deserialize(json, OpenerJsonContext.Default.DictionaryStringString)
+                    ?? new(StringComparer.OrdinalIgnoreCase);
+                var conf = configService.GetConfig();
+                conf.GlobalDefaultParams = defaults;
+                configService.SaveConfig(conf);
+                AnsiConsole.MarkupLine("[green]Global default params updated.[/]");
+            }
+            catch (JsonException ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Invalid default params JSON:[/] {ex.Message}");
+            }
+        }, defaultParamsArg);
+        configCommand.AddCommand(setDefaultParams);
+
+        var clearDefaultParams = new Command("clear-default-params", "Clear all global default placeholder values. Per-key defaults are not changed.");
+        clearDefaultParams.SetHandler(() =>
+        {
+            var conf = configService.GetConfig();
+            conf.GlobalDefaultParams.Clear();
+            configService.SaveConfig(conf);
+            AnsiConsole.MarkupLine("[green]Global default params cleared.[/]");
+        });
+        configCommand.AddCommand(clearDefaultParams);
+
         rootCommand.AddCommand(configCommand);
 
         // --- EXPORT/IMPORT ---
-        var exportCommand = new Command("export", "Export keys to a portable encrypted file");
-        var exportPathArg = new Argument<string>("file", "Output file path");
-        var exportPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for export file");
+        var exportCommand = new Command(
+            "export",
+            "Export all keys to a portable encrypted backup file.\n\n" +
+            "Example:\n" +
+            "  o export backup.dat --password my-export-password");
+        var exportPathArg = new Argument<string>("file", "Output encrypted backup file path.");
+        var exportPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for the export file. Omit it to be prompted interactively.");
         exportCommand.AddArgument(exportPathArg);
         exportCommand.AddOption(exportPassOpt);
         exportCommand.SetHandler((string path, string? passInput) => 
@@ -223,9 +329,13 @@ class Program
         }, exportPathArg, exportPassOpt);
         rootCommand.AddCommand(exportCommand);
 
-        var importCommand = new Command("import", "Import keys from a portable encrypted file");
-        var importPathArg = new Argument<string>("file", "Input file path");
-        var importPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for import file");
+        var importCommand = new Command(
+            "import",
+            "Import keys from a portable encrypted backup file. Existing keys with the same name are updated.\n\n" +
+            "Example:\n" +
+            "  o import backup.dat --password my-export-password");
+        var importPathArg = new Argument<string>("file", "Input encrypted backup file path.");
+        var importPassOpt = new Option<string>(new[] { "-p", "--password" }, "Password for the import file. Omit it to be prompted interactively.");
         importCommand.AddArgument(importPathArg);
         importCommand.AddOption(importPassOpt);
         importCommand.SetHandler((string path, string? passInput) => 
@@ -284,12 +394,18 @@ class Program
 
         // --- EXISTING COMMANDS ---
 
-        var addCommand = new Command("add", "Add a new key");
-        var addKeyArg = new Argument<string>("key");
-        var addValArg = new Argument<string>("value");
-        var addTypeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Type of the key");
-        var addUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "JSON string for UrlAliases (e.g. '{ \"env\": { \"d\": \"-dev\" } }')");
-        var addDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "JSON string for DefaultParams (e.g. '{ \"user\": \"kchirravuri\" }')");
+        var addCommand = new Command(
+            "add",
+            "Add a new key.\n\n" +
+            "Examples:\n" +
+            "  o add token \"secret-value\" -t Data\n" +
+            "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
+            "  o add api \"https://nexus<env>.bpc.com/<region>/<user>\" -t WebPath --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }' --default-params '{ \"user\": \"kchirravuri\" }'");
+        var addKeyArg = new Argument<string>("key", "Unique key name, for example jira or api.");
+        var addValArg = new Argument<string>("value", "Stored value. Meaning depends on --type: URL template, local path, data, JSON, or REST JSON.");
+        var addTypeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Key type: WebPath, LocalPath, Data, JsonData, or Rest.");
+        var addUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "Per-key alias map JSON. " + UrlAliasJsonHelp);
+        var addDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "Per-key default params JSON. " + DefaultParamsJsonHelp);
         addCommand.AddArgument(addKeyArg);
         addCommand.AddArgument(addValArg);
         addCommand.AddOption(addTypeOpt);
@@ -324,11 +440,16 @@ class Program
         rootCommand.AddCommand(addCommand);
 
         // UPDATE
-        var updateCommand = new Command("update", "Update an existing key");
-        var upKeyArg = new Argument<string>("key");
-        var upValArg = new Argument<string>("value");
-        var upUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "JSON string to replace UrlAliases for the key");
-        var upDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "JSON string to replace DefaultParams for the key");
+        var updateCommand = new Command(
+            "update",
+            "Update an existing key's value and optionally replace its per-key URL aliases/default params.\n\n" +
+            "Examples:\n" +
+            "  o update jira \"https://jira.company.com/browse/{0}\"\n" +
+            "  o update api \"https://nexus<env>.bpc.com/<region>/<user>\" --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }'");
+        var upKeyArg = new Argument<string>("key", "Existing key name to update.");
+        var upValArg = new Argument<string>("value", "Replacement stored value.");
+        var upUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "Replace per-key alias map JSON. " + UrlAliasJsonHelp);
+        var upDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "Replace per-key default params JSON. " + DefaultParamsJsonHelp);
         updateCommand.AddArgument(upKeyArg);
         updateCommand.AddArgument(upValArg);
         updateCommand.AddOption(upUrlAliasesOpt);
@@ -357,8 +478,12 @@ class Program
         rootCommand.AddCommand(updateCommand);
 
         // DELETE
-        var deleteCommand = new Command("delete", "Delete a key");
-        var delKeyArg = new Argument<string>("key");
+        var deleteCommand = new Command(
+            "delete",
+            "Delete a stored key.\n\n" +
+            "Example:\n" +
+            "  o delete jira");
+        var delKeyArg = new Argument<string>("key", "Existing key name to delete.");
         deleteCommand.AddArgument(delKeyArg);
         deleteCommand.SetHandler((string k) =>
         {
@@ -372,7 +497,7 @@ class Program
         rootCommand.AddCommand(deleteCommand);
 
         // LIST
-        var listCommand = new Command("list", "List all keys");
+        var listCommand = new Command("list", "List all stored keys with type and a safe value preview.");
         listCommand.SetHandler(() =>
         {
             var keys = storageService.GetKeys();
