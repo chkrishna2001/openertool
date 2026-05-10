@@ -5,12 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.0.3] - 2026-05-10
+
+### Added
+- Named placeholder URL templates for `WebPath` and `Rest` keys, including alias and default parameter support.
+- Multi-target support for .NET 8.0 and .NET 10.0.
+- AOT-safe JSON parsing for CLI configuration options.
 
 ### Changed
 - **Important Finding**: Direct file I/O to OneDrive Files On-Demand fails across all .NET applications due to Windows virtual filesystem layer. This is not a bug in Opener but a platform limitation.
 - Removed ineffective retry logic and fallback mechanisms that attempted to work around OneDrive access issues.
 - Simplified error messages with guidance to use Microsoft Graph API for reliable OneDrive access.
+- Release packaging now extracts changelog content and embeds it into NuGet package metadata as release notes.
+- CI/CD now validates both supported .NET target frameworks and includes AOT publishing checks.
 
 ### To Be Added
 - Microsoft Graph API integration for reliable cross-platform OneDrive support.

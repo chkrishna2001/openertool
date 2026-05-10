@@ -85,8 +85,26 @@ jobs:
 
         "PACKAGE_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+    - name: Extract Release Notes from CHANGELOG
+      shell: pwsh
+      run: |
+        $version = $env:PACKAGE_VERSION
+        $changelogPath = Join-Path $env:GITHUB_WORKSPACE 'CHANGELOG.md'
+        $content = Get-Content $changelogPath -Raw
+        $pattern = "(?s)## \[$([regex]::Escape($version))\].*?(?=\r?\n## \[|\z)"
+        $match = [regex]::Match($content, $pattern)
+
+        if (-not $match.Success) {
+          throw "Release notes for version $version were not found in CHANGELOG.md."
+        }
+
+        $notes = $match.Value.Trim()
+        # Escape for MSBuild
+        $notes = $notes.Replace('"', '&quot;')
+        "RELEASE_NOTES=$notes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
     - name: Pack
-      run: dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs /p:Version=${{ env.PACKAGE_VERSION }}
+      run: dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs /p:Version=${{ env.PACKAGE_VERSION }} /p:PackageReleaseNotes="${{ env.RELEASE_NOTES }}"
 
     - name: Push to NuGet
       run: |
