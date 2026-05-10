@@ -10,8 +10,9 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>o</ToolCommandName>
     <PackageId>com.chirravuris.opener</PackageId>
-    <Version>1.0.1</Version>
+    <Version>1.0.3</Version>
     <PackageReleaseNotesFile>release-notes.md</PackageReleaseNotesFile>
+    <RuntimeFrameworkVersion>10.0.0</RuntimeFrameworkVersion>
   </PropertyGroup>
 
   <ItemGroup>
