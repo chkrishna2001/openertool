@@ -90,6 +90,7 @@ jobs:
       run: |
         $version = $env:PACKAGE_VERSION
         $changelogPath = Join-Path $env:GITHUB_WORKSPACE 'CHANGELOG.md'
+        $outputPath = Join-Path $env:GITHUB_WORKSPACE 'release-notes.md'
         $content = Get-Content $changelogPath -Raw
         $pattern = "(?s)## \[$([regex]::Escape($version))\].*?(?=\r?\n## \[|\z)"
         $match = [regex]::Match($content, $pattern)
@@ -99,12 +100,14 @@ jobs:
         }
 
         $notes = $match.Value.Trim()
-        # Escape for MSBuild
-        $notes = $notes.Replace('"', '&quot;')
-        "RELEASE_NOTES=$notes" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+        $notes | Out-File -FilePath $outputPath -Encoding utf8
 
     - name: Pack
-      run: dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs /p:Version=${{ env.PACKAGE_VERSION }} /p:PackageReleaseNotes="${{ env.RELEASE_NOTES }}"
+      shell: pwsh
+      run: |
+        $releaseNotesPath = Join-Path $env:GITHUB_WORKSPACE 'release-notes.md'
+        $releaseNotes = Get-Content $releaseNotesPath -Raw
+        dotnet pack Opener.sln --configuration Release --output ${{ github.workspace }}/nupkgs /p:Version=${{ env.PACKAGE_VERSION }} "/p:PackageReleaseNotes=$releaseNotes"
 
     - name: Push to NuGet
       run: |
