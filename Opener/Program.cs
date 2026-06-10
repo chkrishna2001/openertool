@@ -71,8 +71,12 @@ class Program
             "Opener Tool - quickly open links, paths, stored data, and REST shortcuts.\n\n" +
             "Examples:\n" +
             "  o list\n" +
+            "  o list -s github\n" +
             "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
             "  o jira PROJ-123\n" +
+            "  o jira -s    # search for keys containing 'jira' and execute if single match\n" +
+            "  o githubtoken -r  # print token to stdout instead of copying\n" +
+            "  o githubtoken -c  # force copy token to clipboard instead of opening\n" +
             "  o add api \"https://nexus<env>.bpc.com/<region>/<user>\" -t WebPath --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }' --default-params '{ \"user\": \"kchirravuri\" }'\n" +
             "  o api env=d region=us");
 
@@ -81,7 +85,14 @@ class Program
         var actArgsArgument = new Argument<string[]>("args", "Arguments passed to the key action. URL templates accept positional values or named values like env=d region=us.") { Arity = ArgumentArity.ZeroOrMore, IsHidden = true };
         rootCommand.AddArgument(keyArgument);
         rootCommand.AddArgument(actArgsArgument);
-
+        
+        // Global options for implicit execution
+        var returnOpt = new Option<bool>(new[] { "-r", "--return" }, "Return the resolved value to stdout instead of copying/opening");
+        var copyOpt = new Option<bool>(new[] { "-c", "--copy" }, "Force copy the resolved value to clipboard instead of performing the default action");
+        var searchFlagOpt = new Option<bool>(new[] { "-s", "--search" }, "Treat the provided key as a search term and lookup by substring (key + description)");
+        rootCommand.AddOption(returnOpt);
+        rootCommand.AddOption(copyOpt);
+        rootCommand.AddOption(searchFlagOpt);
         // --- CONFIG Command ---
         var configCommand = new Command(
             "config",
@@ -594,26 +605,35 @@ class Program
 
         // LIST
         var listCommand = new Command("list", "List all stored keys with type and a safe value preview.");
-        listCommand.SetHandler(() =>
+        var listSearchOpt = new Option<string?>(new[] { "-s", "--search" }, "Filter keys by case-insensitive substring across key and description.") { Arity = ArgumentArity.ZeroOrOne };
+        listCommand.AddOption(listSearchOpt);
+        listCommand.SetHandler((string? search) =>
         {
             var keys = storageService.GetKeys();
             if (keys == null || keys.Count == 0) { AnsiConsole.MarkupLine("[yellow]No keys found.[/]"); return; }
+            var filtered = keys.Where(x => x != null).ToList();
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                filtered = filtered.Where(k => (!string.IsNullOrWhiteSpace(k.Key) && k.Key.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
+                                             (!string.IsNullOrWhiteSpace(k.Description) && k.Description.Contains(search, StringComparison.OrdinalIgnoreCase))).OrderBy(x => x.Key).ToList();
+            }
+            if (filtered.Count == 0) { AnsiConsole.MarkupLine("[yellow]No keys match the search term.[/]"); return; }
             var table = new Table();
             table.AddColumn("Key");
             table.AddColumn("Type");
             table.AddColumn("Value (Preview)");
-            foreach (var key in keys.Where(x => x != null).OrderBy(x => x.Key))
+            foreach (var key in filtered.OrderBy(x => x.Key))
             {
                 string valPreview = (key.Value ?? string.Empty).Length > 50 ? key.Value!.Substring(0, 47) + "..." : (key.Value ?? string.Empty);
                 if(key.KeyType == OKeyType.Data || key.KeyType == OKeyType.JsonData) valPreview = "********";
                 table.AddRow(key.Key ?? "N/A", key.KeyType.ToString(), Markup.Escape(valPreview));
             }
             AnsiConsole.Write(table);
-        });
+        }, listSearchOpt);
         rootCommand.AddCommand(listCommand);
 
         // Implicit handler
-        rootCommand.SetHandler(async (string keyResult, string[] actArgs) =>
+        rootCommand.SetHandler(async (string keyResult, string[] actArgs, bool returnValue, bool forceCopy, bool searchFlag) =>
         {
             if (string.IsNullOrEmpty(keyResult))
             {
@@ -624,13 +644,45 @@ class Program
             try 
             {
                 var keys = storageService.GetKeys();
-                var foundKey = keys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(keyResult, StringComparison.OrdinalIgnoreCase));
-                if (foundKey == null)
+                OKey? foundKey = null;
+                if (searchFlag)
                 {
-                    AnsiConsole.MarkupLine($"[red]Key '{keyResult}' not found.[/]");
-                    return;
+                    var matches = keys.Where(k => k != null && (
+                        (!string.IsNullOrWhiteSpace(k.Key) && k.Key.Contains(keyResult, StringComparison.OrdinalIgnoreCase)) ||
+                        (!string.IsNullOrWhiteSpace(k.Description) && k.Description.Contains(keyResult, StringComparison.OrdinalIgnoreCase))
+                    )).ToList();
+
+                    if (matches.Count == 0)
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]No keys found matching '{keyResult}'.[/]");
+                        return;
+                    }
+                    else if (matches.Count > 1)
+                    {
+                        AnsiConsole.MarkupLine($"[yellow]Multiple matches found for '{keyResult}':[/]");
+                        int i = 1;
+                        foreach (var m in matches)
+                        {
+                            AnsiConsole.MarkupLine($"{i++}. {m.Key} - {m.Description}");
+                        }
+                        return;
+                    }
+                    else
+                    {
+                        foundKey = matches.First();
+                    }
                 }
-                await actionService.ExecuteAsync(foundKey, actArgs);
+                else
+                {
+                    foundKey = keys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(keyResult, StringComparison.OrdinalIgnoreCase));
+                    if (foundKey == null)
+                    {
+                        AnsiConsole.MarkupLine($"[red]Key '{keyResult}' not found.[/]");
+                        return;
+                    }
+                }
+
+                await actionService.ExecuteAsync(foundKey, actArgs, returnValue, forceCopy);
             }
             catch (Exception ex)
             {
@@ -644,7 +696,7 @@ class Program
                     }
                 }
             }
-        }, keyArgument, actArgsArgument);
+        }, keyArgument, actArgsArgument, returnOpt, copyOpt, searchFlagOpt);
 
         await new CommandLineBuilder(rootCommand)
             .UseDefaults()

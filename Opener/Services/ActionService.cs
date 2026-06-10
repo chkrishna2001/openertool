@@ -25,7 +25,7 @@ public partial class RestDataContext : JsonSerializerContext { }
 
 public interface IActionService
 {
-    Task ExecuteAsync(OKey key, string[] args);
+    Task ExecuteAsync(OKey key, string[] args, bool returnValue = false, bool forceCopy = false);
 }
 
 public class ActionService : IActionService
@@ -37,21 +37,21 @@ public class ActionService : IActionService
         _configService = configService;
     }
 
-    public async Task ExecuteAsync(OKey key, string[] args)
+    public async Task ExecuteAsync(OKey key, string[] args, bool returnValue = false, bool forceCopy = false)
     {
         switch (key.KeyType)
         {
             case OKeyType.WebPath:
-                HandleWebPath(key, args);
+                HandleWebPath(key, args, returnValue, forceCopy);
                 break;
             case OKeyType.LocalPath:
-                HandleLocalPath(key, args);
+                HandleLocalPath(key, args, returnValue, forceCopy);
                 break;
             case OKeyType.JsonData:
-                HandleJsonData(key);
+                HandleJsonData(key, returnValue, forceCopy);
                 break;
             case OKeyType.Data:
-                HandleData(key);
+                HandleData(key, returnValue, forceCopy);
                 break;
             case OKeyType.Rest:
                 await HandleRest(key, args);
@@ -62,7 +62,7 @@ public class ActionService : IActionService
         }
     }
 
-    private void HandleWebPath(OKey key, string[] args)
+    private void HandleWebPath(OKey key, string[] args, bool returnValue = false, bool forceCopy = false)
     {
         var conf = _configService?.GetConfig();
         var resolved = UrlTemplateResolver.Resolve(
@@ -78,11 +78,37 @@ public class ActionService : IActionService
             AnsiConsole.MarkupLine($"[yellow]Warning:[/] {warning}");
         }
 
+        if (returnValue)
+        {
+            Console.WriteLine(resolved.Value);
+            return;
+        }
+
+        if (forceCopy)
+        {
+            ClipboardService.SetText(resolved.Value);
+            AnsiConsole.MarkupLine("[green]Value copied to clipboard![/]");
+            return;
+        }
+
         OpenUrl(resolved.Value);
     }
 
-    private void HandleLocalPath(OKey key, string[] args)
+    private void HandleLocalPath(OKey key, string[] args, bool returnValue = false, bool forceCopy = false)
     {
+        if (returnValue)
+        {
+            Console.WriteLine(key.Value);
+            return;
+        }
+
+        if (forceCopy)
+        {
+            ClipboardService.SetText(key.Value);
+            AnsiConsole.MarkupLine("[green]Value copied to clipboard![/]");
+            return;
+        }
+
         var psi = new ProcessStartInfo
         {
             FileName = key.Value,
@@ -101,8 +127,14 @@ public class ActionService : IActionService
         }
     }
 
-    private void HandleJsonData(OKey key)
+    private void HandleJsonData(OKey key, bool returnValue = false, bool forceCopy = false)
     {
+        if (returnValue)
+        {
+            Console.WriteLine(key.Value);
+            return;
+        }
+
         try 
         {
             using var doc = JsonDocument.Parse(key.Value);
@@ -116,9 +148,14 @@ public class ActionService : IActionService
              AnsiConsole.MarkupLine("[yellow]Value was not valid JSON, copied as plain text.[/]");
         }
     }
-
-    private void HandleData(OKey key)
+    private void HandleData(OKey key, bool returnValue = false, bool forceCopy = false)
     {
+        if (returnValue)
+        {
+            Console.WriteLine(key.Value);
+            return;
+        }
+
         ClipboardService.SetText(key.Value);
         AnsiConsole.MarkupLine("[green]Data copied to clipboard![/]");
     }

@@ -45,8 +45,19 @@ o add <key> <value> -t <type>
 # Execute/Use a key
 o <key> [args]
 
+# New execution flags
+# `-r/--return`: write the resolved value to stdout instead of performing the default action (copy/open)
+# `-c/--copy`: force copy the resolved value to clipboard instead of performing the default action
+# `-s/--search`: when used with a key argument, treat the argument as a search term (case-insensitive substring across key and description). If single match, executes; if multiple, prints matches.
+
+# Examples:
+o githubtoken -r    # print token to stdout
+o githubtoken -c    # force copy token to clipboard
+o token -s          # search keys containing "token"; show matches or execute if single
+
 # List all keys
 o list
+o list -s github
 ```
 
 ### Key Types & Examples
