@@ -26,8 +26,71 @@ public class ConfigService : IConfigService
 
     public ConfigService()
     {
-        _configDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".opener");
+        var contextRoot = ExecutionContextHelper.GetExecutionContextPath();
+        _configDir = Path.Combine(contextRoot, ".opener");
         _configPath = Path.Combine(_configDir, "config.json");
+    }
+
+    /// <summary>
+    /// Detects execution context to avoid data collisions between dev, installed, and release scenarios.
+    /// Returns the base path to use for config and data storage.
+    /// </summary>
+    private static string DetectExecutionContext()
+    {
+        // Check if running from a development context (dotnet run or local build)
+        var currentExe = Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location;
+        var currentDir = Path.GetDirectoryName(currentExe) ?? ".";
+        
+        // Detect: dotnet run or bin/Debug execution
+        if (currentDir.Contains("bin" + Path.DirectorySeparatorChar + "Debug", StringComparison.OrdinalIgnoreCase) ||
+            currentDir.Contains("bin/Debug", StringComparison.OrdinalIgnoreCase))
+        {
+            // Running in debug mode - use repo-local or temp storage to avoid global collision
+            var repoRoot = FindRepositoryRoot(currentDir);
+            if (!string.IsNullOrEmpty(repoRoot))
+            {
+                // Store in repo-local .dev folder
+                return Path.Combine(repoRoot, ".dev-opener");
+            }
+        }
+
+        // Detect: Release folder execution (e.g., publish output)
+        if (currentDir.Contains("bin" + Path.DirectorySeparatorChar + "Release", StringComparison.OrdinalIgnoreCase) ||
+            currentDir.Contains("bin/Release", StringComparison.OrdinalIgnoreCase))
+        {
+            // Running from release folder - use release-relative storage
+            var repoRoot = FindRepositoryRoot(currentDir);
+            if (!string.IsNullOrEmpty(repoRoot))
+            {
+                return Path.Combine(repoRoot, ".release-opener");
+            }
+        }
+
+        // Default: Global user context (installed tool or regular execution)
+        return Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+    }
+
+    /// <summary>
+    /// Finds the repository root by looking for .git or Opener.sln markers.
+    /// Returns null if not found (indicating this is not a dev execution).
+    /// </summary>
+    private static string? FindRepositoryRoot(string startPath)
+    {
+        var current = new DirectoryInfo(startPath);
+        
+        // Search up to 5 levels up the directory tree
+        for (int i = 0; i < 5 && current != null; i++)
+        {
+            if (File.Exists(Path.Combine(current.FullName, ".git")))
+                return current.FullName;
+            
+            if (File.Exists(Path.Combine(current.FullName, "Opener.sln")))
+                return current.FullName;
+            
+            current = current.Parent;
+        }
+
+        return null;
     }
 
     public OpenerConfig GetConfig()
@@ -159,7 +222,11 @@ public class ConfigService : IConfigService
         }
 
         // Default location
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var dataRoot = Environment.GetEnvironmentVariable("OPENER_DATA_DIR");
+        var appData = string.IsNullOrWhiteSpace(dataRoot)
+            ? Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData)
+            : dataRoot;
+
         var folder = Path.Combine(appData, "Opener");
         if (!Directory.Exists(folder))
         {

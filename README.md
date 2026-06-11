@@ -170,6 +170,70 @@ o config clear-password
 ```
 
 - **Automation Friendly**: Supports `--password` flags for `config`, `export`, and `import` to integrate into scripts and CI/CD pipelines.
+
+## 🛡️ Data Safety & Backup
+
+Opener includes several safeguards to prevent accidental data loss:
+
+### Confirmation Prompts
+Destructive operations now ask for confirmation:
+- `o delete <key>` — requires confirmation before deleting (use `-y/--yes` to skip)
+- `o config clear-url-aliases` — requires confirmation before clearing all aliases
+- `o config set-encryption <mode>` — requires confirmation before re-encrypting (auto-creates backup first)
+
+### Automatic Backups
+- **Before migration**: When you switch encryption modes, an automatic backup is created in `.backup/` folder
+- **Manual backup**: Use `o backup` to create a snapshot at any time
+
+### Recovery Options
+If you lose keys (corrupted file, accidental deletion, etc.):
+
+1. **Check `.backup` folder** (next to your data file):
+   ```bash
+   # On Windows
+   $LOCALAPPDATA\Opener\.backup\
+
+   # On Linux/macOS
+   ~/.local/share/Opener/.backup/
+   ```
+
+2. **Restore from backup**:
+   ```bash
+   # If you have an exported backup
+   o import backup.dat --password your-password
+
+   # Or manually copy a `.backup` file back to your data location
+   # Then restart the tool
+   ```
+
+3. **Export for safekeeping**:
+   ```bash
+   # Create an encrypted export
+   o export ~/Documents/opener_backup.dat --password backup-password
+
+   # Or use auto-backup (stored with timestamps)
+   o backup --password optional-password
+   ```
+
+### Storage Location Safeguarding
+To keep your data in a custom location:
+
+```bash
+# Set a custom storage path (must include filename)
+o config set-location "C:\Users\Me\Secure\opener.dat"    # Windows
+o config set-location "$HOME/secure/opener.dat"           # Linux/macOS
+
+# Verify it took effect
+o config show
+```
+
+**Avoid these locations** (known issues):
+- `~/Documents` on OneDrive-synced machines (use `~/Desktop` or local paths instead)
+- Network shares without proper permissions
+- Read-only filesystems
+
+The tool now validates write permissions before saving the config, so you'll see errors upfront.
+
 - **🛠 Tech Stack**
 
 - **.NET 10** (AOT Enabled)

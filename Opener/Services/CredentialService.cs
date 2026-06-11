@@ -37,7 +37,7 @@ public class FileCredentialService : ICredentialService
 
     public FileCredentialService()
     {
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        var home = ExecutionContextHelper.GetExecutionContextPath();
         _path = Path.Combine(home, ".opener", ".internal_pass");
     }
 

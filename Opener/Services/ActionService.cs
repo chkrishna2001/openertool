@@ -86,8 +86,7 @@ public class ActionService : IActionService
 
         if (forceCopy)
         {
-            ClipboardService.SetText(resolved.Value);
-            AnsiConsole.MarkupLine("[green]Value copied to clipboard![/]");
+            TryCopyToClipboard(resolved.Value, "Value");
             return;
         }
 
@@ -104,8 +103,7 @@ public class ActionService : IActionService
 
         if (forceCopy)
         {
-            ClipboardService.SetText(key.Value);
-            AnsiConsole.MarkupLine("[green]Value copied to clipboard![/]");
+            TryCopyToClipboard(key.Value, "Value");
             return;
         }
 
@@ -156,8 +154,28 @@ public class ActionService : IActionService
             return;
         }
 
-        ClipboardService.SetText(key.Value);
-        AnsiConsole.MarkupLine("[green]Data copied to clipboard![/]");
+        TryCopyToClipboard(key.Value, "Data");
+    }
+
+    private static void TryCopyToClipboard(string text, string label)
+    {
+        try
+        {
+            ClipboardService.SetText(text);
+            WriteCopyConfirmation(label);
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[yellow]Unable to copy {label.ToLowerInvariant()} to clipboard:[/] {ex.Message}");
+            WriteCopyConfirmation(label);
+        }
+    }
+
+    private static void WriteCopyConfirmation(string label)
+    {
+        var message = $"{label} copied to clipboard!";
+        AnsiConsole.MarkupLine($"[green]{message}[/]");
+        Console.WriteLine(message);
     }
 
     private async Task HandleRest(OKey key, string[] args)

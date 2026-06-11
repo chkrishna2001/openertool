@@ -3,6 +3,21 @@ set -e
 
 echo "Starting Integration Tests..."
 
+SANDBOX_ROOT="$(mktemp -d -t opener-integration-XXXXXX)"
+export HOME="$SANDBOX_ROOT/home"
+export XDG_CONFIG_HOME="$SANDBOX_ROOT/config"
+export XDG_DATA_HOME="$SANDBOX_ROOT/data"
+export OPENER_HOME="$HOME"
+export OPENER_DATA_DIR="$SANDBOX_ROOT/data/Opener"
+
+mkdir -p "$HOME" "$XDG_CONFIG_HOME" "$XDG_DATA_HOME" "$OPENER_DATA_DIR"
+
+cleanup() {
+	rm -rf "$SANDBOX_ROOT"
+}
+
+trap cleanup EXIT
+
 # 1. Setup portable mode with password
 mkdir -p ~/.opener
 echo "{\"encryptionMode\":\"portable\"}" > ~/.opener/config.json

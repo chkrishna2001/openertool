@@ -125,20 +125,80 @@ class Program
             "set-location",
             "Set a custom encrypted data-file path.\n\n" +
             "Example:\n" +
-            "  o config set-location \"C:\\Users\\me\\OneDrive\\opener.dat\"");
-        var pathArg = new Argument<string>("path", "Full path to opener.dat, including the file name.");
+            "  o config set-location \"C:\\Users\\me\\Documents\\opener.dat\"\n\n" +
+            "Notes:\n" +
+            "  - Specify the full path including filename (e.g., .dat)\n" +
+            "  - The directory must exist or be creatable\n" +
+            "  - Use a local folder; OneDrive may cause access issues\n" +
+            "  - To move existing keys, use 'export' then 'import'");
+        var pathArg = new Argument<string>("path", "Full path to opener.dat, including the file name (e.g., C:\\Users\\me\\Documents\\opener.dat).");
         setLocation.AddArgument(pathArg);
         setLocation.SetHandler((string path) => 
         {
-            var conf = configService.GetConfig();
-            // If changing location, attempt to move file? 
-            // For now, simple switch. User can manually move or use export/import.
-            // Better UX: Ask to move?
-            // Let's keep it simple: Just set path.
-            conf.StorageLocation = path;
-            configService.SaveConfig(conf);
-            AnsiConsole.MarkupLine($"[green]Storage location updated to:[/] {path}");
-            AnsiConsole.MarkupLine("[yellow]Note: Existing keys were not moved. Use 'export' then 'import' if needed.[/]");
+            try
+            {
+                // Validate path format
+                if (string.IsNullOrWhiteSpace(path))
+                {
+                    AnsiConsole.MarkupLine("[red]Path cannot be empty.[/]");
+                    return;
+                }
+
+                // Check if directory exists or can be created
+                var dir = Path.GetDirectoryName(path);
+                if (string.IsNullOrEmpty(dir))
+                {
+                    AnsiConsole.MarkupLine("[red]Invalid path. Must include a directory component.[/]");
+                    return;
+                }
+
+                // Try to create directory if it doesn't exist
+                if (!Directory.Exists(dir))
+                {
+                    try
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+                    catch (Exception ex)
+                    {
+                        AnsiConsole.MarkupLine($"[red]Cannot create directory:[/] {ex.Message}");
+                        AnsiConsole.MarkupLine("[yellow]Ensure the parent directory exists and you have write permissions.[/]");
+                        return;
+                    }
+                }
+
+                // Try to write a test file to validate permissions
+                try
+                {
+                    var testFile = Path.Combine(dir, ".opener-test-" + Guid.NewGuid().ToString("N"));
+                    File.WriteAllText(testFile, "test");
+                    File.Delete(testFile);
+                }
+                catch (Exception ex)
+                {
+                    AnsiConsole.MarkupLine($"[red]Cannot write to directory:[/] {ex.Message}");
+                    if (path.IndexOf("OneDrive", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        AnsiConsole.MarkupLine("[yellow]This path is on OneDrive. Try a local folder (Desktop, Documents) or use 'o cloud' for OneDrive support.[/]");
+                    }
+                    else if (path.IndexOf("Documents", StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        AnsiConsole.MarkupLine("[yellow]Documents folder may be protected or synced. Try a local folder like Desktop or C:\\Temp.[/]");
+                    }
+                    return;
+                }
+
+                // All checks passed, save the location
+                var conf = configService.GetConfig();
+                conf.StorageLocation = path;
+                configService.SaveConfig(conf);
+                AnsiConsole.MarkupLine($"[green]Storage location updated to:[/] {path}");
+                AnsiConsole.MarkupLine("[yellow]Note: Existing keys were not moved. Use 'export' then 'import' if needed.[/]");
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Error updating storage location:[/] {ex.Message}");
+            }
         }, pathArg);
         configCommand.AddCommand(setLocation);
 
@@ -168,6 +228,29 @@ class Program
                 return;
             }
 
+            // AUTO-BACKUP BEFORE MIGRATION
+            try
+            {
+                var backupPath = Path.Combine(Path.GetDirectoryName(configService.GetDataFilePath()) ?? "." , ".backup");
+                Directory.CreateDirectory(backupPath);
+                var backupFile = Path.Combine(backupPath, $"opener_backup_{DateTime.Now:yyyyMMdd_HHmmss}.dat");
+                if (File.Exists(configService.GetDataFilePath()))
+                {
+                    File.Copy(configService.GetDataFilePath(), backupFile, true);
+                    AnsiConsole.MarkupLine($"[dim]Auto-backup created: {backupFile}[/]");
+                }
+            }
+            catch (Exception backupEx)
+            {
+                AnsiConsole.MarkupLine($"[yellow]Warning: Could not create backup: {backupEx.Message}[/]");
+            }
+            
+            if (!AnsiConsole.Confirm($"Switch from {(configService.IsPortableMode() ? "portable" : "local")} to {mode} encryption mode? Keys will be re-encrypted.", false))
+            {
+                AnsiConsole.MarkupLine("[yellow]Cancelled.[/]");
+                return;
+            }
+            
             // MIGRATION LOGIC
             // 1. Decrypt current keys using CURRENT service
             var currentKeys = storageService.GetKeys();
@@ -285,6 +368,11 @@ class Program
         var clearUrlAliases = new Command("clear-url-aliases", "Clear all global URL alias maps. Per-key aliases are not changed.");
         clearUrlAliases.SetHandler(() =>
         {
+            if (!AnsiConsole.Confirm("⚠️  Clear all global URL aliases? This cannot be undone.", false))
+            {
+                AnsiConsole.MarkupLine("[yellow]Cancelled.[/]");
+                return;
+            }
             var conf = configService.GetConfig();
             conf.GlobalUrlAliases.Clear();
             configService.SaveConfig(conf);
@@ -384,6 +472,58 @@ class Program
         configCommand.AddCommand(clearDefaultParam);
 
         rootCommand.AddCommand(configCommand);
+
+        // --- BACKUP (Quick auto-backup) ---
+        var backupCommand = new Command(
+            "backup",
+            "Create an encrypted backup of all keys in the .backup folder.\n\n" +
+            "Backup files are automatically stored next to your data file with timestamps.\n\n" +
+            "Example:\n" +
+            "  o backup\n" +
+            "  o backup --password my-backup-password");
+        var backupPassOpt = new Option<string>(new[] { "-p", "--password" }, "Optional password. If omitted, uses current encryption key.");
+        backupCommand.AddOption(backupPassOpt);
+        backupCommand.SetHandler((string? passInput) =>
+        {
+            var keys = storageService.GetKeys();
+            if (keys.Count == 0)
+            {
+                AnsiConsole.MarkupLine("[yellow]No keys to backup.[/]");
+                return;
+            }
+
+            try
+            {
+                var backupDir = Path.Combine(Path.GetDirectoryName(configService.GetDataFilePath()) ?? ".", ".backup");
+                Directory.CreateDirectory(backupDir);
+                
+                var backupFile = Path.Combine(backupDir, $"opener_backup_{DateTime.Now:yyyyMMdd_HHmmss}.dat");
+                
+                // If password provided, use portable encryption. Otherwise just copy the encrypted file.
+                if (!string.IsNullOrEmpty(passInput))
+                {
+                    var tempEncryptor = new PortableEncryptionService(passInput);
+                    var json = JsonSerializer.Serialize(keys, OpenerJsonContext.Default.ListOKey);
+                    var encrypted = tempEncryptor.Encrypt(json);
+                    File.WriteAllText(backupFile, encrypted);
+                }
+                else
+                {
+                    // Copy current encrypted file
+                    if (File.Exists(configService.GetDataFilePath()))
+                    {
+                        File.Copy(configService.GetDataFilePath(), backupFile, true);
+                    }
+                }
+                
+                AnsiConsole.MarkupLine($"[green]✓ Backup created:[/] {backupFile}");
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Backup failed:[/] {ex.Message}");
+            }
+        }, backupPassOpt);
+        rootCommand.AddCommand(backupCommand);
 
         // --- EXPORT/IMPORT ---
         var exportCommand = new Command(
@@ -591,16 +731,25 @@ class Program
             "Example:\n" +
             "  o delete jira");
         var delKeyArg = new Argument<string>("key", "Existing key name to delete.");
+        var confirmOpt = new Option<bool>(new[] { "-y", "--yes" }, "Skip confirmation prompt.");
         deleteCommand.AddArgument(delKeyArg);
-        deleteCommand.SetHandler((string k) =>
+        deleteCommand.AddOption(confirmOpt);
+        deleteCommand.SetHandler((string k, bool skipConfirm) =>
         {
             var keys = storageService.GetKeys();
             var existing = keys.FirstOrDefault(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
             if (existing == null) { AnsiConsole.MarkupLine($"[red]Key '{k}' not found.[/]"); return; }
+            
+            if (!skipConfirm && !AnsiConsole.Confirm($"⚠️  Delete key '{k}'? This cannot be undone.", false))
+            {
+                AnsiConsole.MarkupLine("[yellow]Cancelled.[/]");
+                return;
+            }
+            
             keys.Remove(existing);
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' deleted.[/]");
-        }, delKeyArg);
+        }, delKeyArg, confirmOpt);
         rootCommand.AddCommand(deleteCommand);
 
         // LIST
