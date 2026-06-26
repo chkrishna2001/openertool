@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.CommandLine;
 using System.CommandLine.Builder;
 using System.CommandLine.Parsing;
@@ -15,7 +15,7 @@ namespace Opener;
 class Program
 {
     private const string UrlAliasJsonHelp = "Inline JSON or a JSON file path. Shape: { \"placeholder\": { \"input\": \"replacement\" } }. Example file content: { \"env\": { \"d\": \"-dev\", \"u\": \"-uat\", \"p\": \"\" } }";
-    private const string DefaultParamsJsonHelp = "Inline JSON or a JSON file path. Shape: { \"placeholder\": \"defaultValue\" }. Example file content: { \"user\": \"kchirravuri\", \"region\": \"us\" }";
+    private const string DefaultParamsJsonHelp = "Inline JSON or a JSON file path. Shape: { \"placeholder\": \"defaultValue\" }. Example file content: { \"user\": \"krishna\", \"region\": \"us\" }";
 
     static async Task Main(string[] args)
     {
@@ -51,7 +51,10 @@ class Program
         }
 
         var storageService = new StorageService(configService, encryptionService);
-        var actionService = new ActionService(configService);
+        var graphAuthService = new GraphAuthService(storageService);
+        var emailService = new EmailService(storageService, graphAuthService);
+        var calendarService = new CalendarService(storageService, graphAuthService);
+        var actionService = new ActionService(configService, storageService, emailService, calendarService);
 
         // 1.5 Auto-initialize storage
         try 
@@ -77,7 +80,7 @@ class Program
             "  o jira -s    # search for keys containing 'jira' and execute if single match\n" +
             "  o githubtoken -r  # print token to stdout instead of copying\n" +
             "  o githubtoken -c  # force copy token to clipboard instead of opening\n" +
-            "  o add api \"https://nexus<env>.bpc.com/<region>/<user>\" -t WebPath --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }' --default-params '{ \"user\": \"kchirravuri\" }'\n" +
+            "  o add api \"https://nvidia<env>.domain.com/<region>/<user>\" -t WebPath --url-aliases '{ \"env\": { \"d\": \"-dev\", \"p\": \"\" } }' --default-params '{ \"user\": \"kchirravuri\" }'\n" +
             "  o api env=d region=us");
 
         // --- Arguments for Implicit Key ---
@@ -90,9 +93,11 @@ class Program
         var returnOpt = new Option<bool>(new[] { "-r", "--return" }, "Return the resolved value to stdout instead of copying/opening");
         var copyOpt = new Option<bool>(new[] { "-c", "--copy" }, "Force copy the resolved value to clipboard instead of performing the default action");
         var searchFlagOpt = new Option<bool>(new[] { "-s", "--search" }, "Treat the provided key as a search term and lookup by substring (key + description)");
+        var elevatedOpt = new Option<bool>(new[] { "-e", "--elevated" }, "Execute the command/script in elevated mode (admin/sudo)");
         rootCommand.AddOption(returnOpt);
         rootCommand.AddOption(copyOpt);
         rootCommand.AddOption(searchFlagOpt);
+        rootCommand.AddOption(elevatedOpt);
         // --- CONFIG Command ---
         var configCommand = new Command(
             "config",
@@ -471,6 +476,96 @@ class Program
         }, clearDefaultNameArg);
         configCommand.AddCommand(clearDefaultParam);
 
+        // --- SMTP and Graph Provider Configurations ---
+        var setProviderCommand = new Command("set-provider", "Configure credentials/settings for email and calendar providers.");
+        var smtpCommand = new Command("smtp", "Configure SMTP credentials.");
+        var smtpServerOpt = new Option<string>("--server", "SMTP server host (e.g., smtp.gmail.com)") { IsRequired = true };
+        var smtpPortOpt = new Option<int>("--port", "SMTP server port (e.g., 587)") { IsRequired = true };
+        var smtpSslOpt = new Option<bool>("--ssl", "Enable SSL/TLS");
+        var smtpUserOpt = new Option<string>("--username", "SMTP username/email") { IsRequired = true };
+        var smtpPassOpt = new Option<string>("--password", "SMTP password or App Password") { IsRequired = true };
+        
+        smtpCommand.AddOption(smtpServerOpt);
+        smtpCommand.AddOption(smtpPortOpt);
+        smtpCommand.AddOption(smtpSslOpt);
+        smtpCommand.AddOption(smtpUserOpt);
+        smtpCommand.AddOption(smtpPassOpt);
+
+        smtpCommand.SetHandler((string server, int port, bool ssl, string username, string password) =>
+        {
+            var keys = storageService.GetKeys();
+            
+            void SetKey(string k, string v)
+            {
+                var existing = keys.Find(x => x.Key == k);
+                if (existing != null) existing.Value = v;
+                else keys.Add(new OKey { Key = k, Value = v, KeyType = OKeyType.Data, Description = "System Credential" });
+            }
+
+            SetKey("__provider_smtp_server", server);
+            SetKey("__provider_smtp_port", port.ToString());
+            SetKey("__provider_smtp_ssl", ssl.ToString());
+            SetKey("__provider_smtp_username", username);
+            SetKey("__provider_smtp_password", password);
+
+            storageService.SaveKeys(keys);
+            AnsiConsole.MarkupLine("[green]✔ SMTP provider configured successfully![/]");
+        }, smtpServerOpt, smtpPortOpt, smtpSslOpt, smtpUserOpt, smtpPassOpt);
+
+        var graphCommand = new Command("graph", "Configure Microsoft Graph API Client Credentials (daemon auth).");
+        var graphTenantOpt = new Option<string>("--tenant-id", "Azure Active Directory Tenant ID") { IsRequired = true };
+        var graphClientIdOpt = new Option<string>("--client-id", "Azure Active Directory Client ID") { IsRequired = true };
+        var graphClientSecretOpt = new Option<string>("--client-secret", "Azure Active Directory Client Secret") { IsRequired = true };
+
+        graphCommand.AddOption(graphTenantOpt);
+        graphCommand.AddOption(graphClientIdOpt);
+        graphCommand.AddOption(graphClientSecretOpt);
+
+        graphCommand.SetHandler(async (string tenantId, string clientId, string clientSecret) =>
+        {
+            AnsiConsole.MarkupLine("[yellow]Validating credentials with Microsoft Graph...[/]");
+            bool isValid = await graphAuthService.ValidateClientCredentialsAsync(tenantId, clientId, clientSecret);
+            if (!isValid)
+            {
+                AnsiConsole.MarkupLine("[red]Error: Authentication failed. Credentials not saved.[/]");
+                return;
+            }
+
+            var keys = storageService.GetKeys();
+
+            void SetKey(string k, string v)
+            {
+                var existing = keys.Find(x => x.Key == k);
+                if (existing != null) existing.Value = v;
+                else keys.Add(new OKey { Key = k, Value = v, KeyType = OKeyType.Data, Description = "System Credential" });
+            }
+
+            SetKey("__provider_graph_tenant_id", tenantId);
+            SetKey("__provider_graph_client_id", clientId);
+            SetKey("__provider_graph_client_secret", clientSecret);
+
+            // Clean up any Device Code flow refresh tokens to avoid conflicts
+            var deviceToken = keys.Find(x => x.Key == "__provider_graph_refresh_token");
+            if (deviceToken != null) keys.Remove(deviceToken);
+
+            storageService.SaveKeys(keys);
+            AnsiConsole.MarkupLine("[green]✔ Microsoft Graph API Client Credentials configured and validated successfully![/]");
+        }, graphTenantOpt, graphClientIdOpt, graphClientSecretOpt);
+
+        var authGraphCommand = new Command("auth-graph", "Authenticate Microsoft Graph via interactive Device Code Flow.");
+        var authClientIdOpt = new Option<string?>("--client-id", "Optional custom Azure AD Client ID");
+        authGraphCommand.AddOption(authClientIdOpt);
+
+        authGraphCommand.SetHandler(async (string? customClientId) =>
+        {
+            await graphAuthService.StartDeviceCodeAuthAsync(customClientId);
+        }, authClientIdOpt);
+
+        setProviderCommand.AddCommand(smtpCommand);
+        setProviderCommand.AddCommand(graphCommand);
+        configCommand.AddCommand(setProviderCommand);
+        configCommand.AddCommand(authGraphCommand);
+
         rootCommand.AddCommand(configCommand);
 
         // --- BACKUP (Quick auto-backup) ---
@@ -640,7 +735,7 @@ class Program
             "Examples:\n" +
             "  o add token \"secret-value\" -t Data\n" +
             "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
-            "  o add api \"https://nexus<env>.bpc.com/<region>/<user>\" -t WebPath\n" +
+            "  o add api \"https://nvidia<env>.domain.com/<region>/<user>\" -t WebPath\n" +
             "  o config set-url-aliases env d=-dev u=-uat p=\n" +
             "  o config set-default-params user kchirravuri");
         var addKeyArg = new Argument<string>("key", "Unique key name, for example jira or api.");
@@ -648,12 +743,14 @@ class Program
         var addTypeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Key type: WebPath, LocalPath, Data, JsonData, or Rest.");
         var addUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "Per-key alias map JSON. " + UrlAliasJsonHelp);
         var addDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "Per-key default params JSON. " + DefaultParamsJsonHelp);
+        var addElevatedOpt = new Option<bool>(new[] { "-e", "--elevated" }, "Execute the key in elevated mode (admin/sudo)");
         addCommand.AddArgument(addKeyArg);
         addCommand.AddArgument(addValArg);
         addCommand.AddOption(addTypeOpt);
         addCommand.AddOption(addUrlAliasesOpt);
         addCommand.AddOption(addDefaultParamsOpt);
-        addCommand.SetHandler((string k, string v, OKeyType t, string? urlAliasesJson, string? defaultParamsJson) =>
+        addCommand.AddOption(addElevatedOpt);
+        addCommand.SetHandler((string k, string v, OKeyType t, string? urlAliasesJson, string? defaultParamsJson, bool elevated) =>
         {
             var keys = storageService.GetKeys();
             if (keys.Any(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase)))
@@ -661,7 +758,7 @@ class Program
                 AnsiConsole.MarkupLine($"[red]Key '{k}' already exists. Use update command.[/]");
                 return;
             }
-            var newKey = new OKey { Key = k ?? string.Empty, Value = v ?? string.Empty, KeyType = t };
+            var newKey = new OKey { Key = k ?? string.Empty, Value = v ?? string.Empty, KeyType = t, Elevated = elevated };
 
             var resolvedUrlAliasesJson = ResolveJsonInput(urlAliasesJson);
             if (!string.IsNullOrWhiteSpace(resolvedUrlAliasesJson))
@@ -680,7 +777,7 @@ class Program
             keys.Add(newKey);
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' added successfully![/]");
-        }, addKeyArg, addValArg, addTypeOpt, addUrlAliasesOpt, addDefaultParamsOpt);
+        }, addKeyArg, addValArg, addTypeOpt, addUrlAliasesOpt, addDefaultParamsOpt, addElevatedOpt);
         rootCommand.AddCommand(addCommand);
 
         // UPDATE
@@ -689,17 +786,19 @@ class Program
             "Update an existing key's value and optionally replace its per-key URL aliases/default params.\n\n" +
             "Examples:\n" +
             "  o update jira \"https://jira.company.com/browse/{0}\"\n" +
-            "  o update api \"https://nexus<env>.bpc.com/<region>/<user>\"\n" +
+            "  o update api \"https://nvidia<env>.domain.com/<region>/<user>\"\n" +
             "  o config set-url-aliases env d=-dev u=-uat p=");
         var upKeyArg = new Argument<string>("key", "Existing key name to update.");
         var upValArg = new Argument<string>("value", "Replacement stored value.");
         var upUrlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "Replace per-key alias map JSON. " + UrlAliasJsonHelp);
         var upDefaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "Replace per-key default params JSON. " + DefaultParamsJsonHelp);
+        var upElevatedOpt = new Option<bool?>(new[] { "-e", "--elevated" }, "Update elevated execution mode (true/false)");
         updateCommand.AddArgument(upKeyArg);
         updateCommand.AddArgument(upValArg);
         updateCommand.AddOption(upUrlAliasesOpt);
         updateCommand.AddOption(upDefaultParamsOpt);
-        updateCommand.SetHandler((string k, string v, string? urlAliasesJson, string? defaultParamsJson) =>
+        updateCommand.AddOption(upElevatedOpt);
+        updateCommand.SetHandler((string k, string v, string? urlAliasesJson, string? defaultParamsJson, bool? elevated) =>
         {
             var keys = storageService.GetKeys();
             var existing = keys.FirstOrDefault(x => x?.Key != null && x.Key.Equals(k, StringComparison.OrdinalIgnoreCase));
@@ -719,9 +818,14 @@ class Program
                 catch { AnsiConsole.MarkupLine("[yellow]Warning:[/] Invalid JSON for --default-params, ignoring."); }
             }
 
+            if (elevated.HasValue)
+            {
+                existing.Elevated = elevated.Value;
+            }
+
             storageService.SaveKeys(keys);
             AnsiConsole.MarkupLine($"[green]Key '{k}' updated successfully![/]");
-        }, upKeyArg, upValArg, upUrlAliasesOpt, upDefaultParamsOpt);
+        }, upKeyArg, upValArg, upUrlAliasesOpt, upDefaultParamsOpt, upElevatedOpt);
         rootCommand.AddCommand(updateCommand);
 
         // DELETE
@@ -760,7 +864,7 @@ class Program
         {
             var keys = storageService.GetKeys();
             if (keys == null || keys.Count == 0) { AnsiConsole.MarkupLine("[yellow]No keys found.[/]"); return; }
-            var filtered = keys.Where(x => x != null).ToList();
+            var filtered = keys.Where(x => x != null && !x.Key.StartsWith("__")).ToList();
             if (!string.IsNullOrWhiteSpace(search))
             {
                 filtered = filtered.Where(k => (!string.IsNullOrWhiteSpace(k.Key) && k.Key.Contains(search, StringComparison.OrdinalIgnoreCase)) ||
@@ -770,19 +874,20 @@ class Program
             var table = new Table();
             table.AddColumn("Key");
             table.AddColumn("Type");
+            table.AddColumn("Elevated");
             table.AddColumn("Value (Preview)");
             foreach (var key in filtered.OrderBy(x => x.Key))
             {
                 string valPreview = (key.Value ?? string.Empty).Length > 50 ? key.Value!.Substring(0, 47) + "..." : (key.Value ?? string.Empty);
                 if(key.KeyType == OKeyType.Data || key.KeyType == OKeyType.JsonData) valPreview = "********";
-                table.AddRow(key.Key ?? "N/A", key.KeyType.ToString(), Markup.Escape(valPreview));
+                table.AddRow(key.Key ?? "N/A", key.KeyType.ToString(), key.Elevated ? "[red]Yes[/]" : "No", Markup.Escape(valPreview));
             }
             AnsiConsole.Write(table);
         }, listSearchOpt);
         rootCommand.AddCommand(listCommand);
 
         // Implicit handler
-        rootCommand.SetHandler(async (string keyResult, string[] actArgs, bool returnValue, bool forceCopy, bool searchFlag) =>
+        rootCommand.SetHandler(async (string keyResult, string[] actArgs, bool returnValue, bool forceCopy, bool searchFlag, bool elevated) =>
         {
             if (string.IsNullOrEmpty(keyResult))
             {
@@ -792,7 +897,7 @@ class Program
             
             try 
             {
-                var keys = storageService.GetKeys();
+                var keys = storageService.GetKeys().Where(x => x != null && !x.Key.StartsWith("__")).ToList();
                 OKey? foundKey = null;
                 if (searchFlag)
                 {
@@ -831,7 +936,7 @@ class Program
                     }
                 }
 
-                await actionService.ExecuteAsync(foundKey, actArgs, returnValue, forceCopy);
+                await actionService.ExecuteAsync(foundKey, actArgs, returnValue, forceCopy, elevated);
             }
             catch (Exception ex)
             {
@@ -845,7 +950,7 @@ class Program
                     }
                 }
             }
-        }, keyArgument, actArgsArgument, returnOpt, copyOpt, searchFlagOpt);
+        }, keyArgument, actArgsArgument, returnOpt, copyOpt, searchFlagOpt, elevatedOpt);
 
         await new CommandLineBuilder(rootCommand)
             .UseDefaults()

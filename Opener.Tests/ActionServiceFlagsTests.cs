@@ -7,6 +7,7 @@ using Xunit;
 
 namespace Opener.Tests;
 
+[Collection("ConsoleTests")]
 public class ActionServiceFlagsTests
 {
     [Fact]

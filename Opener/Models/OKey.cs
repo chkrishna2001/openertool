@@ -12,4 +12,6 @@ public class OKey
     public string Description { get; set; } = string.Empty;
     public Dictionary<string, Dictionary<string, string>> UrlAliases { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> DefaultParams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public bool Elevated { get; set; } = false;
 }
+

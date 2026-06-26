@@ -40,14 +40,14 @@ public class UrlTemplateResolverTests
         };
 
         var result = UrlTemplateResolver.Resolve(
-            "https://nexus<env>.bpc.com/<region>/<user>",
+            "https://nvidia<env>.domain.com/<region>/<user>",
             new[] { "u", "us" },
             null,
             null,
             aliases,
             defaults);
 
-        Assert.Equal("https://nexus-uat.bpc.com/us/kchirravuri", result.Value);
+        Assert.Equal("https://nvidia-uat.domain.com/us/kchirravuri", result.Value);
         Assert.Empty(result.Warnings);
     }
 
@@ -70,14 +70,14 @@ public class UrlTemplateResolverTests
         };
 
         var result = UrlTemplateResolver.Resolve(
-            "https://nexus<env>.bpc.com/<region>/<user>",
+            "https://nvidia<env>.domain.com/<region>/<user>",
             new[] { "region=us", "u" },
             null,
             null,
             aliases,
             defaults);
 
-        Assert.Equal("https://nexus-uat.bpc.com/us/kchirravuri", result.Value);
+        Assert.Equal("https://nvidia-uat.domain.com/us/kchirravuri", result.Value);
         Assert.Empty(result.Warnings);
     }
 
@@ -95,14 +95,14 @@ public class UrlTemplateResolverTests
         };
 
         var result = UrlTemplateResolver.Resolve(
-            "https://api.bpc.com/{0}/nexus<env>",
+            "https://api.domain.com/{0}/nvidia<env>",
             new[] { "service", "d" },
             null,
             null,
             aliases,
             null);
 
-        Assert.Equal("https://api.bpc.com/service/nexus-dev", result.Value);
+        Assert.Equal("https://api.domain.com/service/nvidia-dev", result.Value);
         Assert.Empty(result.Warnings);
     }
 
@@ -120,14 +120,14 @@ public class UrlTemplateResolverTests
         };
 
         var result = UrlTemplateResolver.Resolve(
-            "https://nexus<env>.bpc.com",
+            "https://nvidia<env>.domain.com",
             new[] { "p" },
             null,
             null,
             aliases,
             null);
 
-        Assert.Equal("https://nexus.bpc.com", result.Value);
+        Assert.Equal("https://nvidia.domain.com", result.Value);
         Assert.Empty(result.Warnings);
     }
 }

@@ -75,17 +75,17 @@ o add jira "https://jira.company.com/browse/{0}" -t WebPath
 o jira PROJ-123  # Opens https://jira.company.com/browse/PROJ-123
 
 # Named placeholders with aliases/defaults (configured per key or globally)
-# Template: https://nexus<env>.bpc.com/<region>/<user>
+# Template: https://yourapi<env>.domain.com/<region>/<user>
 # env aliases: d -> -dev, u -> -uat, p -> ""
-# default user: kchirravuri
+# default user: KC45454
 o api d us krishna
-# Resolves to: https://nexus-dev.bpc.com/us/kchirravuri
+# Resolves to: https://yourapi-dev.domain.com/us/KC45454
 
 o api region=us u
-# Resolves to: https://nexus-uat.bpc.com/us/kchirravuri
+# Resolves to: https://yourapi-uat.domain.com/us/KC45454
 
 o api p us
-# Resolves to: https://nexus.bpc.com/us/kchirravuri
+# Resolves to: https://yourapi.domain.com/us/KC45454
 ```
 
 Placeholder resolution rules:

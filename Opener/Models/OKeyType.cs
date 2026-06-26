@@ -6,5 +6,7 @@ public enum OKeyType
     LocalPath = 2,
     JsonData = 3,
     Data = 4,
-    Rest = 5
+    Rest = 5,
+    EmailTemplate = 6,
+    CalendarEvent = 7
 }
