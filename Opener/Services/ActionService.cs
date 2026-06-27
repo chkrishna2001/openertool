@@ -290,6 +290,7 @@ public class ActionService : IActionService
             var resolvedBcc = UrlTemplateResolver.Resolve(template.Bcc, args, conf?.GlobalUrlAliases, conf?.GlobalDefaultParams, key.UrlAliases, key.DefaultParams).Value;
             var resolvedSubject = UrlTemplateResolver.Resolve(template.Subject, args, conf?.GlobalUrlAliases, conf?.GlobalDefaultParams, key.UrlAliases, key.DefaultParams).Value;
             var resolvedBody = UrlTemplateResolver.Resolve(template.Body, args, conf?.GlobalUrlAliases, conf?.GlobalDefaultParams, key.UrlAliases, key.DefaultParams).Value;
+            var resolvedAttachmentPath = UrlTemplateResolver.Resolve(template.AttachmentPath, args, conf?.GlobalUrlAliases, conf?.GlobalDefaultParams, key.UrlAliases, key.DefaultParams).Value;
 
             if (returnValue)
             {
@@ -310,6 +311,7 @@ public class ActionService : IActionService
                 Bcc = resolvedBcc,
                 Subject = resolvedSubject,
                 Body = resolvedBody,
+                AttachmentPath = resolvedAttachmentPath,
                 Provider = template.Provider
             };
 

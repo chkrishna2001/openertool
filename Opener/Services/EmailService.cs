@@ -27,6 +27,21 @@ public class GraphRecipient
     public GraphEmailAddress EmailAddress { get; set; } = new();
 }
 
+public class GraphAttachment
+{
+    [JsonPropertyName("@odata.type")]
+    public string ODataType { get; set; } = "#microsoft.graph.fileAttachment";
+
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [JsonPropertyName("contentType")]
+    public string ContentType { get; set; } = "application/octet-stream";
+
+    [JsonPropertyName("contentBytes")]
+    public string ContentBytes { get; set; } = string.Empty;
+}
+
 public class GraphItemBody
 {
     [JsonPropertyName("contentType")]
@@ -52,6 +67,9 @@ public class GraphMessage
 
     [JsonPropertyName("bccRecipients")]
     public List<GraphRecipient> BccRecipients { get; set; } = new();
+
+    [JsonPropertyName("attachments")]
+    public List<GraphAttachment>? Attachments { get; set; }
 }
 
 public class GraphSendMailRequest
@@ -64,6 +82,8 @@ public class GraphSendMailRequest
 }
 
 [JsonSerializable(typeof(GraphSendMailRequest))]
+[JsonSerializable(typeof(GraphMessage))]
+[JsonSerializable(typeof(GraphAttachment))]
 internal partial class GraphSendMailJsonContext : JsonSerializerContext { }
 
 public interface IEmailService
@@ -107,6 +127,12 @@ public class EmailService : IEmailService
     private void SendSystemEmail(EmailTemplateData emailTemplate)
     {
         AnsiConsole.MarkupLine("[yellow]Opening default email client (system mailto)...[/]");
+
+        if (!string.IsNullOrEmpty(emailTemplate.AttachmentPath))
+        {
+            AnsiConsole.MarkupLine($"[yellow]Warning:[/] Attachments are not reliably supported by the mailto protocol and may need to be attached manually.");
+            AnsiConsole.MarkupLine($"[blue]Attachment:[/] {emailTemplate.AttachmentPath}");
+        }
         
         var toEscaped = Uri.EscapeDataString(emailTemplate.To);
         var ccEscaped = Uri.EscapeDataString(emailTemplate.Cc);
@@ -190,6 +216,16 @@ public class EmailService : IEmailService
             mail.Subject = emailTemplate.Subject;
             mail.Body = emailTemplate.Body;
 
+            if (!string.IsNullOrEmpty(emailTemplate.AttachmentPath))
+            {
+                var fullPath = Path.GetFullPath(emailTemplate.AttachmentPath);
+                if (!File.Exists(fullPath))
+                {
+                    throw new FileNotFoundException($"Attachment file not found: {fullPath}");
+                }
+                mail.Attachments.Add(new Attachment(fullPath));
+            }
+
             AnsiConsole.MarkupLine($"[yellow]Connecting to SMTP server {server}:{port}...[/]");
             await smtp.SendMailAsync(mail);
             AnsiConsole.MarkupLine($"[green]✔ Email successfully sent to {emailTemplate.To} via SMTP![/]");
@@ -224,6 +260,30 @@ public class EmailService : IEmailService
             throw new Exception("Email template must specify at least one recipient in the 'To' field.");
         }
 
+        List<GraphAttachment>? graphAttachments = null;
+        if (!string.IsNullOrEmpty(emailTemplate.AttachmentPath))
+        {
+            var fullPath = Path.GetFullPath(emailTemplate.AttachmentPath);
+            if (!File.Exists(fullPath))
+            {
+                throw new FileNotFoundException($"Attachment file not found: {fullPath}");
+            }
+
+            var fileName = Path.GetFileName(fullPath);
+            var contentBytes = Convert.ToBase64String(await File.ReadAllBytesAsync(fullPath));
+            var contentType = GetMimeType(fileName);
+
+            graphAttachments = new List<GraphAttachment>
+            {
+                new()
+                {
+                    Name = fileName,
+                    ContentType = contentType,
+                    ContentBytes = contentBytes
+                }
+            };
+        }
+
         var payload = new GraphSendMailRequest
         {
             Message = new GraphMessage
@@ -236,7 +296,8 @@ public class EmailService : IEmailService
                 },
                 ToRecipients = toList.Select(e => new GraphRecipient { EmailAddress = new GraphEmailAddress { Address = e } }).ToList(),
                 CcRecipients = ccList.Select(e => new GraphRecipient { EmailAddress = new GraphEmailAddress { Address = e } }).ToList(),
-                BccRecipients = bccList.Select(e => new GraphRecipient { EmailAddress = new GraphEmailAddress { Address = e } }).ToList()
+                BccRecipients = bccList.Select(e => new GraphRecipient { EmailAddress = new GraphEmailAddress { Address = e } }).ToList(),
+                Attachments = graphAttachments
             },
             SaveToSentItems = "true"
         };
@@ -284,5 +345,29 @@ public class EmailService : IEmailService
                      .Select(e => e.Trim())
                      .Where(e => !string.IsNullOrEmpty(e))
                      .ToList();
+    }
+
+    private static string GetMimeType(string fileName)
+    {
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext switch
+        {
+            ".txt" => "text/plain",
+            ".html" => "text/html",
+            ".pdf" => "application/pdf",
+            ".png" => "image/png",
+            ".jpg" => "image/jpeg",
+            ".jpeg" => "image/jpeg",
+            ".gif" => "image/gif",
+            ".csv" => "text/csv",
+            ".json" => "application/json",
+            ".xml" => "application/xml",
+            ".zip" => "application/zip",
+            ".doc" => "application/msword",
+            ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            ".xls" => "application/vnd.ms-excel",
+            ".xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            _ => "application/octet-stream"
+        };
     }
 }
