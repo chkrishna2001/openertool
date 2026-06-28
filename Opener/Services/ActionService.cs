@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
+using Opener.Commands;
 using Opener.Models;
 using Spectre.Console;
 using Spectre.Console.Json;
@@ -228,7 +229,8 @@ public class ActionService : IActionService
     {
         try
         {
-            var restData = JsonSerializer.Deserialize(key.Value, RestDataContext.Default.RestData);
+            var json = CommandHelpers.NormalizeJson(key.Value);
+            var restData = JsonSerializer.Deserialize(json, RestDataContext.Default.RestData);
             if(restData == null) return;
 
             var conf = _configService?.GetConfig();
@@ -280,7 +282,8 @@ public class ActionService : IActionService
 
         try
         {
-            var template = JsonSerializer.Deserialize(key.Value, OpenerJsonContext.Default.EmailTemplateData);
+            var json = CommandHelpers.NormalizeJson(key.Value);
+            var template = JsonSerializer.Deserialize(json, OpenerJsonContext.Default.EmailTemplateData);
             if (template == null) return;
 
             var conf = _configService?.GetConfig();
@@ -333,7 +336,8 @@ public class ActionService : IActionService
 
         try
         {
-            var eventData = JsonSerializer.Deserialize(key.Value, OpenerJsonContext.Default.CalendarEventData);
+            var json = CommandHelpers.NormalizeJson(key.Value);
+            var eventData = JsonSerializer.Deserialize(json, OpenerJsonContext.Default.CalendarEventData);
             if (eventData == null) return;
 
             var conf = _configService?.GetConfig();

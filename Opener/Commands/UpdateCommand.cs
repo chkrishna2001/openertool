@@ -40,7 +40,14 @@ public class UpdateCommand : Command
                 _console.MarkupLine($"[red]Key '{k}' not found.[/]"); 
                 return; 
             }
-            existing.Value = v ?? string.Empty;
+            if (existing.KeyType == OKeyType.JsonData || existing.KeyType == OKeyType.Rest || existing.KeyType == OKeyType.EmailTemplate || existing.KeyType == OKeyType.CalendarEvent)
+            {
+                existing.Value = CommandHelpers.ResolveJsonInput(v);
+            }
+            else
+            {
+                existing.Value = v ?? string.Empty;
+            }
             
             var resolvedUrlAliasesJson = CommandHelpers.ResolveJsonInput(urlAliasesJson);
             if (!string.IsNullOrWhiteSpace(resolvedUrlAliasesJson))

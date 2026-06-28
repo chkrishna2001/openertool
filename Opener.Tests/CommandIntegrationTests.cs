@@ -58,6 +58,34 @@ public class CommandIntegrationTests
     }
 
     [Fact]
+    public async Task AddCommand_JsonTypeWithFilePath_ResolvesValueFromFile()
+    {
+        _storageMock.Setup(s => s.GetKeys()).Returns(new List<OKey>());
+        var parser = CreateParser();
+
+        var tempFile = Path.Combine(Path.GetTempPath(), "test-template-" + Guid.NewGuid().ToString("N") + ".json");
+        var jsonContent = "{\"to\":\"user@example.com\"}";
+        File.WriteAllText(tempFile, jsonContent);
+
+        try
+        {
+            var exitCode = await parser.InvokeAsync($"add myemail \"{tempFile.Replace("\\", "\\\\")}\" -t EmailTemplate");
+
+            Assert.Equal(0, exitCode);
+            _storageMock.Verify(s => s.SaveKeys(It.Is<List<OKey>>(list =>
+                list.Count == 1 &&
+                list[0].Key == "myemail" &&
+                list[0].Value == jsonContent &&
+                list[0].KeyType == OKeyType.EmailTemplate
+            )), Times.Once);
+        }
+        finally
+        {
+            if (File.Exists(tempFile)) File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
     public async Task AddCommand_DuplicateKey_DoesNotAddKey()
     {
         _storageMock.Setup(s => s.GetKeys()).Returns(new List<OKey>

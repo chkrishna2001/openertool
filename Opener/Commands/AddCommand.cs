@@ -43,7 +43,14 @@ public class AddCommand : Command
                 _console.MarkupLine($"[red]Key '{k}' already exists. Use update command.[/]");
                 return;
             }
-            var newKey = new OKey { Key = k ?? string.Empty, Value = v ?? string.Empty, KeyType = t, Elevated = elevated };
+
+            string resolvedValue = v ?? string.Empty;
+            if (t == OKeyType.JsonData || t == OKeyType.Rest || t == OKeyType.EmailTemplate || t == OKeyType.CalendarEvent)
+            {
+                resolvedValue = CommandHelpers.ResolveJsonInput(v);
+            }
+
+            var newKey = new OKey { Key = k ?? string.Empty, Value = resolvedValue, KeyType = t, Elevated = elevated };
 
             var resolvedUrlAliasesJson = CommandHelpers.ResolveJsonInput(urlAliasesJson);
             if (!string.IsNullOrWhiteSpace(resolvedUrlAliasesJson))

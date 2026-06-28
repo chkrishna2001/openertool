@@ -1,6 +1,8 @@
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Moq;
+using Opener.Commands;
 using Opener.Models;
 using Opener.Services;
 using Xunit;
@@ -63,5 +65,30 @@ public class ActionServiceTests
             t.AttachmentPath == "C:\\files\\June_report.pdf" &&
             t.Provider == "smtp"
         )), Times.Once);
+    }
+
+    [Fact]
+    public void NormalizeJson_WithSingleQuotes_NormalizesCorrectly()
+    {
+        var input = "{ 'to': 'chkrishna2001@yahoo.com', 'subject': 'see if this returns date - {0}', 'body': 'hi this\\'s test email', 'attachmentPath': 'tet-attachment-{1}.txt', 'provider':'smtp'}";
+        var expected = "{\"to\":\"chkrishna2001@yahoo.com\",\"subject\":\"see if this returns date - {0}\",\"body\":\"hi this's test email\",\"attachmentPath\":\"tet-attachment-{1}.txt\",\"provider\":\"smtp\"}";
+        
+        var normalized = CommandHelpers.NormalizeJson(input);
+        
+        // Remove spaces for comparison if any, or just compare exact expected string
+        // Let's assert exact mapping:
+        var normalizedWithoutWhitespace = string.Concat(normalized.Where(c => !char.IsWhiteSpace(c)));
+        var expectedWithoutWhitespace = string.Concat(expected.Where(c => !char.IsWhiteSpace(c)));
+        
+        Assert.Equal(expectedWithoutWhitespace, normalizedWithoutWhitespace);
+
+        // Deserializing should succeed
+        var data = JsonSerializer.Deserialize(normalized, OpenerJsonContext.Default.EmailTemplateData);
+        Assert.NotNull(data);
+        Assert.Equal("chkrishna2001@yahoo.com", data.To);
+        Assert.Equal("see if this returns date - {0}", data.Subject);
+        Assert.Equal("hi this's test email", data.Body);
+        Assert.Equal("tet-attachment-{1}.txt", data.AttachmentPath);
+        Assert.Equal("smtp", data.Provider);
     }
 }

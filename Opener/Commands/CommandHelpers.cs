@@ -43,6 +43,11 @@ public static class CommandHelpers
             return string.Empty;
         }
 
+        if (jsonOrFile == "-")
+        {
+            return Console.In.ReadToEnd();
+        }
+
         if (File.Exists(jsonOrFile))
         {
             return ReadJsonFile(jsonOrFile);
@@ -54,5 +59,77 @@ public static class CommandHelpers
     public static string ReadJsonFile(string path)
     {
         return File.ReadAllText(path);
+    }
+
+    public static string NormalizeJson(string input)
+    {
+        if (string.IsNullOrWhiteSpace(input)) return input;
+
+        var sb = new System.Text.StringBuilder();
+        bool inDoubleQuote = false;
+        bool inSingleQuote = false;
+
+        for (int i = 0; i < input.Length; i++)
+        {
+            char c = input[i];
+
+            if (c == '\\')
+            {
+                if (i + 1 < input.Length)
+                {
+                    char next = input[i + 1];
+                    if (inSingleQuote && next == '\'')
+                    {
+                        sb.Append('\'');
+                        i++;
+                    }
+                    else if (inSingleQuote && next == '"')
+                    {
+                        sb.Append("\\\"");
+                        i++;
+                    }
+                    else
+                    {
+                        sb.Append(c);
+                        sb.Append(next);
+                        i++;
+                    }
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+            else if (c == '"')
+            {
+                if (!inSingleQuote)
+                {
+                    inDoubleQuote = !inDoubleQuote;
+                    sb.Append(c);
+                }
+                else
+                {
+                    sb.Append("\\\"");
+                }
+            }
+            else if (c == '\'')
+            {
+                if (!inDoubleQuote)
+                {
+                    inSingleQuote = !inSingleQuote;
+                    sb.Append('"');
+                }
+                else
+                {
+                    sb.Append(c);
+                }
+            }
+            else
+            {
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString();
     }
 }
