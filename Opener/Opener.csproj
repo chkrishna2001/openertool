@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -10,7 +10,7 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>o</ToolCommandName>
     <PackageId>com.chirravuris.opener</PackageId>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
     <PackageReleaseNotes Condition="Exists('$(MSBuildProjectDirectory)/../release-notes.md')">$([System.IO.File]::ReadAllText('$(MSBuildProjectDirectory)/../release-notes.md'))</PackageReleaseNotes>
   </PropertyGroup>
 

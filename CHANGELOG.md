@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.8] - 2026-06-28
+
+### Added
+- Email templating (`EmailTemplate` key type) to compose and send emails via the system client, SMTP, or Microsoft Graph API.
+- Dynamic attachment support for email templates, allowing attachment file paths to be formatted using CLI placeholders (e.g. `reports/{0}_report.pdf`).
+- Calendar event templating (`CalendarEvent` key type) to create calendar invites with subject, body, duration, and relative time expressions.
+- File-based and stdin-based value loading for JSON-based keys (`JsonData`, `Rest`, `EmailTemplate`, `CalendarEvent`), enabling adding/updating via `.json` files or pipes (`stdin`) without shell quote escaping.
+- Elevated execution flag for local paths and scripts (`LocalPath` key type) to automatically prompt for admin or run via `sudo`.
+
+### Changed
+- Improved JSON deserialization robustness with a new JSON normalization state machine that automatically translates single-quoted JSON input to standard double-quoted JSON, preventing PowerShell quoting issues.
+- Optimized and simplified `Program.cs` application bootstrap logic.
+
 ## [1.0.7] - 2026-06-11
 
 ### Changed
