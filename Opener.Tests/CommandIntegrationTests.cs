@@ -408,4 +408,51 @@ public class CommandIntegrationTests
             true // elevated
         ), Times.Once);
     }
+
+    [Fact]
+    public async Task ViewCommand_ExistingKey_DisplaysDetails()
+    {
+        var keys = new List<OKey>
+        {
+            new OKey { Key = "mykey", Value = "myval", KeyType = OKeyType.Data }
+        };
+        _storageMock.Setup(s => s.GetKeys()).Returns(keys);
+        var parser = CreateParser();
+
+        var exitCode = await parser.InvokeAsync("view mykey");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("mykey", _testConsole.Output);
+        Assert.Contains("Data", _testConsole.Output);
+        Assert.Contains("myval", _testConsole.Output);
+    }
+
+    [Fact]
+    public async Task ImplicitKeyExecution_ViewOption_DisplaysDetails()
+    {
+        var keys = new List<OKey>
+        {
+            new OKey { Key = "mykey", Value = "{\"foo\":\"bar\"}", KeyType = OKeyType.JsonData }
+        };
+        _storageMock.Setup(s => s.GetKeys()).Returns(keys);
+        var parser = CreateParser();
+
+        var exitCode = await parser.InvokeAsync("mykey -v");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("mykey", _testConsole.Output);
+        Assert.Contains("JsonData", _testConsole.Output);
+        Assert.Contains("foo", _testConsole.Output);
+        _actionMock.Verify(a => a.ExecuteAsync(It.IsAny<OKey>(), It.IsAny<string[]>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DocsCommand_GeneratesAndOpensDocs()
+    {
+        var parser = CreateParser();
+        var exitCode = await parser.InvokeAsync("docs");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("Generating documentation", _testConsole.Output);
+    }
 }

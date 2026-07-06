@@ -43,16 +43,20 @@ public class OpenerRootCommand : RootCommand
         var copyOpt = new Option<bool>(new[] { "-c", "--copy" }, "Force copy the resolved value to clipboard instead of performing the default action");
         var searchFlagOpt = new Option<bool>(new[] { "-s", "--search" }, "Treat the provided key as a search term and lookup by substring (key + description)");
         var elevatedOpt = new Option<bool>(new[] { "-e", "--elevated" }, "Execute the command/script in elevated mode (admin/sudo)");
+        var viewOpt = new Option<bool>(new[] { "-v", "--view" }, "View the raw details and stored value of the key");
         AddOption(returnOpt);
         AddOption(copyOpt);
         AddOption(searchFlagOpt);
         AddOption(elevatedOpt);
+        AddOption(viewOpt);
 
         // --- Register Subcommands ---
         AddCommand(new AddCommand(storageService, console));
         AddCommand(new UpdateCommand(storageService, console));
         AddCommand(new DeleteCommand(storageService, console));
         AddCommand(new ListCommand(storageService, console));
+        AddCommand(new ViewCommand(storageService, console));
+        AddCommand(new DocsCommand(configService, console));
         AddCommand(new BackupCommand(configService, storageService, console));
         AddCommand(new ExportCommand(storageService, console));
         AddCommand(new ImportCommand(storageService, console));
@@ -80,7 +84,7 @@ public class OpenerRootCommand : RootCommand
         AddCommand(configCommand);
 
         // Implicit handler
-        this.SetHandler(async (string keyResult, string[] actArgs, bool returnValue, bool forceCopy, bool searchFlag, bool elevated) =>
+        this.SetHandler(async (string keyResult, string[] actArgs, bool returnValue, bool forceCopy, bool searchFlag, bool elevated, bool viewFlag) =>
         {
             if (string.IsNullOrEmpty(keyResult))
             {
@@ -129,6 +133,12 @@ public class OpenerRootCommand : RootCommand
                     }
                 }
 
+                if (viewFlag)
+                {
+                    CommandHelpers.DisplayKey(foundKey, _console);
+                    return;
+                }
+
                 await actionService.ExecuteAsync(foundKey, actArgs, returnValue, forceCopy, elevated);
             }
             catch (Exception ex)
@@ -143,6 +153,6 @@ public class OpenerRootCommand : RootCommand
                     }
                 }
             }
-        }, keyArgument, actArgsArgument, returnOpt, copyOpt, searchFlagOpt, elevatedOpt);
+        }, keyArgument, actArgsArgument, returnOpt, copyOpt, searchFlagOpt, elevatedOpt, viewOpt);
     }
 }

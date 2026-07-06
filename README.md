@@ -48,16 +48,24 @@ o <key> [args]
 # New execution flags
 # `-r/--return`: write the resolved value to stdout instead of performing the default action (copy/open)
 # `-c/--copy`: force copy the resolved value to clipboard instead of performing the default action
-# `-s/--search`: when used with a key argument, treat the argument as a search term (case-insensitive substring across key and description). If single match, executes; if multiple, prints matches.
+# `-s/--search`: treat the key as a search term and look up by substring (case-insensitive)
+# `-v/--view`: view the raw details and stored value of the key instead of executing it
 
 # Examples:
 o githubtoken -r    # print token to stdout
 o githubtoken -c    # force copy token to clipboard
 o token -s          # search keys containing "token"; show matches or execute if single
+o myemail -v        # view raw email template JSON details
 
 # List all keys
 o list
 o list -s github
+
+# View raw stored details of a key
+o view mykey
+
+# Open interactive HTML documentation and schema builder
+o docs
 ```
 
 ### Key Types & Examples

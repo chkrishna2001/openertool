@@ -1,6 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Text.Json;
+using Opener.Models;
+using Spectre.Console;
+using Spectre.Console.Json;
 
 namespace Opener.Commands;
 
@@ -131,5 +135,45 @@ public static class CommandHelpers
         }
 
         return sb.ToString();
+    }
+
+    public static void DisplayKey(OKey key, IAnsiConsole console)
+    {
+        var table = new Table().DoubleBorder();
+        table.AddColumn("[bold]Property[/]");
+        table.AddColumn("[bold]Value[/]");
+
+        table.AddRow(new Text("Key"), new Text(key.Key));
+        table.AddRow(new Text("Type"), new Text(key.KeyType.ToString()));
+        table.AddRow(new Text("Elevated"), new Text(key.Elevated ? "Yes" : "No", new Style(foreground: key.Elevated ? Color.Red : Color.Default)));
+
+        if (!string.IsNullOrEmpty(key.Description))
+        {
+            table.AddRow(new Text("Description"), new Text(key.Description));
+        }
+
+        if (key.UrlAliases != null && key.UrlAliases.Count > 0)
+        {
+            var aliasesJson = JsonSerializer.Serialize(key.UrlAliases, OpenerJsonContext.Default.DictionaryStringDictionaryStringString);
+            table.AddRow(new Text("URL Aliases"), new JsonText(aliasesJson));
+        }
+
+        if (key.DefaultParams != null && key.DefaultParams.Count > 0)
+        {
+            var paramsJson = JsonSerializer.Serialize(key.DefaultParams, OpenerJsonContext.Default.DictionaryStringString);
+            table.AddRow(new Text("Default Params"), new JsonText(paramsJson));
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(key.Value);
+            table.AddRow(new Text("Value"), new JsonText(key.Value));
+        }
+        catch
+        {
+            table.AddRow(new Text("Value"), new Text(key.Value));
+        }
+
+        console.Write(table);
     }
 }
