@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2026-07-06
+
+### Added
+- View raw details command (`o view <key>`) and global option (`-v` / `--view`) to print the key's metadata (type, description, aliases, default params, and raw/JSON value) directly to the console instead of executing it.
+- Built-in dynamic HTML documentation app (`o docs` command) which compiles a modern, responsive, offline-first dashboard in the user's browser, including an interactive **JSON Key Builder** to easily generate `EmailTemplate`, `Rest`, and `CalendarEvent` configurations.
+- Documentation output option (`-o` / `--output` in `o docs`) to export the compiled HTML documentation to a custom path (e.g. `index.html`).
+- Automation workflow (`.github/workflows/deploy-docs.yml`) to automatically compile and deploy the HTML documentation to GitHub Pages on pushes to `main` or release tags (`v*`).
+
+### Changed
+- Updated Microsoft Graph device code flow and token refresh scopes to request explicit delegated permissions (`offline_access`, `Mail.Send`, `Calendars.ReadWrite`, `User.Read`) dynamically, fixing standard `Forbidden` errors when sending mail or scheduling events with public client IDs.
+
 ## [1.0.8] - 2026-06-28
 
 ### Added
