@@ -4,9 +4,9 @@ namespace Opener.Services;
 
 public static class DocsHtmlGenerator
 {
-    public static string GetHtml()
+    public static string GetHtml(string version)
     {
-        return rawHtml;
+        return rawHtml.Replace("{{VERSION}}", version);
     }
 
     private const string rawHtml = """
@@ -504,7 +504,10 @@ public static class DocsHtmlGenerator
     <aside>
         <div class="logo-area">
             <div class="logo-icon">o</div>
-            <div class="logo-text">Opener Docs</div>
+            <div>
+                <div class="logo-text">Opener Docs</div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">Version {{VERSION}}</div>
+            </div>
         </div>
 
         <div class="search-container">
@@ -544,12 +547,26 @@ public static class DocsHtmlGenerator
             <header>
                 <div class="badge">Opener CLI Tool</div>
                 <h1>Welcome to Opener</h1>
-                <p class="text-muted">A secure, developer-friendly CLI manager to save and quickly act on links, scripts, credentials, emails, and REST endpoints.</p>
+                <p class="text-muted">A secure, developer-friendly CLI manager to organize, encrypt, and quickly run your links, scripts, credentials, emails, and API templates.</p>
             </header>
 
-            <h2>Overview</h2>
-            <p>Opener encrypts all stored keys at rest. You store data locally using one of several key types, and run actions directly from the CLI. This prevents credential leaks, provides short commands for complex URLs, and triggers processes seamlessly.</p>
+            <h2>Why Opener?</h2>
+            <p>As developers, our daily workflows are filled with repetitive operations and scattered data. We constantly juggle:</p>
+            <ul style="margin: 0 0 20px 24px; color: var(--text-main); list-style-type: square;">
+                <li style="margin-bottom: 8px;"><strong>Messy Bookmarks & Long URLs</strong>: Constantly searching browser history or bookmarks for Jira issues, cloud consoles, or internal wiki pages.</li>
+                <li style="margin-bottom: 8px;"><strong>Plain-Text Secrets</strong>: Storing database connection strings, API tokens, and passwords in temporary plain-text scratchpads, which is a major security risk.</li>
+                <li style="margin-bottom: 8px;"><strong>Repetitive CLI Typing</strong>: Typing long scripts, path commands, or REST endpoint URLs repeatedly throughout the day.</li>
+                <li style="margin-bottom: 8px;"><strong>Context Switching</strong>: Opening separate mail clients or calendars to coordinate quick team syncs or send standard email alerts.</li>
+            </ul>
 
+            <p><strong>Opener solves all of this</strong> by providing a single, unified, secure CLI vault. You register your shortcuts, scripts, and endpoints once under simple, custom keys, and Opener executes them instantly with one shorthand command: <code>o &lt;key&gt;</code>.</p>
+
+            <h2>Installation</h2>
+            <p>Opener is distributed as a global .NET tool. Install it using the dotnet SDK command line:</p>
+            <pre><code>dotnet tool install --global com.chirravuris.opener</code></pre>
+            <p>Once installed, you can use the shorthand command <code>o</code> to access the tool.</p>
+
+            <h2>Core Capabilities</h2>
             <div class="grid-2">
                 <div class="card">
                     <h3>
@@ -564,6 +581,20 @@ public static class DocsHtmlGenerator
                         Actionable Keys
                     </h3>
                     <p>Not just raw storage. Opener opens browsers, runs programs, copies to clipboard, invokes HTTP requests, or constructs templates dynamically.</p>
+                </div>
+                <div class="card">
+                    <h3>
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        Email & Calendaring
+                    </h3>
+                    <p>Send standard emails or book calendar slots right from your CLI via SMTP or Microsoft Graph API without opening heavy graphic clients.</p>
+                </div>
+                <div class="card">
+                    <h3>
+                        <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        Dynamic Placeholders
+                    </h3>
+                    <p>Supports dynamic indexed or named template arguments that resolve at runtime, applying default values and alias maps automatically.</p>
                 </div>
             </div>
 

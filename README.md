@@ -1,5 +1,7 @@
 # Opener Tool (`o`)
 
+[![Documentation](https://img.shields.io/badge/docs-chkrishna2001.github.io%2Fopenertool-blue)](https://chkrishna2001.github.io/openertool/)
+
 **Opener** is a secure, developer-friendly, **cross-platform** CLI tool for managing and quickly accessing your frequently used sensitive data, links, scripts, and API calls. It stores data in an **encrypted** local file and integrates seamlessly into your terminal workflow.
 
 Think of it as a secure key-value store for your CLI that can "act" on the keys: opening browsers, running scripts, copying secrets to clipboard, or making API calls.

@@ -2,6 +2,7 @@ using System;
 using System.CommandLine;
 using System.Diagnostics;
 using System.IO;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using Opener.Services;
 using Spectre.Console;
@@ -15,10 +16,36 @@ public class DocsCommand : Command
     {
         var _console = console ?? AnsiConsole.Console;
 
-        this.SetHandler(() =>
+        var outputOpt = new Option<string?>(new[] { "-o", "--output" }, "Write documentation HTML to a specific file path and exit without opening browser.");
+        AddOption(outputOpt);
+
+        this.SetHandler((string? outputPath) =>
         {
             try
             {
+                var assembly = typeof(DocsCommand).Assembly;
+                var versionAttribute = assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>();
+                var versionStr = versionAttribute?.InformationalVersion ?? assembly.GetName().Version?.ToString() ?? "1.0.0";
+                if (versionStr.Contains('+'))
+                {
+                    versionStr = versionStr.Split('+')[0];
+                }
+
+                var htmlContent = DocsHtmlGenerator.GetHtml(versionStr);
+
+                if (!string.IsNullOrEmpty(outputPath))
+                {
+                    var fullPath = Path.GetFullPath(outputPath);
+                    var dir = Path.GetDirectoryName(fullPath);
+                    if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                    {
+                        Directory.CreateDirectory(dir);
+                    }
+                    File.WriteAllText(fullPath, htmlContent);
+                    _console.MarkupLine($"[green]Documentation successfully saved to: {fullPath}[/]");
+                    return;
+                }
+
                 var contextRoot = ExecutionContextHelper.GetExecutionContextPath();
                 var configDir = Path.Combine(contextRoot, ".opener");
                 
@@ -28,8 +55,6 @@ public class DocsCommand : Command
                 }
 
                 var htmlPath = Path.Combine(configDir, "docs.html");
-                var htmlContent = DocsHtmlGenerator.GetHtml();
-
                 File.WriteAllText(htmlPath, htmlContent);
 
                 _console.MarkupLine($"[yellow]Generating documentation at:[/] {htmlPath}");
@@ -41,7 +66,7 @@ public class DocsCommand : Command
             {
                 _console.MarkupLine($"[red]Error generating or opening documentation:[/] {ex.Message}");
             }
-        });
+        }, outputOpt);
     }
 
     private static void OpenUrl(string url)
