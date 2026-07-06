@@ -144,7 +144,7 @@ public class GraphAuthService : IGraphAuthService
             { "grant_type", "refresh_token" },
             { "client_id", clientId },
             { "refresh_token", refreshToken },
-            { "scope", "https://graph.microsoft.com/.default" }
+            { "scope", "offline_access Mail.Send Calendars.ReadWrite User.Read" }
         };
 
         var response = await client.PostAsync(url, new FormUrlEncodedContent(requestData));
@@ -180,7 +180,7 @@ public class GraphAuthService : IGraphAuthService
         var requestData = new Dictionary<string, string>
         {
             { "client_id", clientId },
-            { "scope", "offline_access https://graph.microsoft.com/.default" }
+            { "scope", "offline_access Mail.Send Calendars.ReadWrite User.Read" }
         };
 
         AnsiConsole.MarkupLine("[yellow]Requesting device code from Microsoft...[/]");
