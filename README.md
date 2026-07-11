@@ -15,13 +15,35 @@ Opener is designed to work seamlessly across **Windows**, **Linux**, and **macOS
 
 ## 🚀 Installation
 
-Install globally as a .NET tool:
+Opener can be installed using automated scripts, as a global .NET tool, or by downloading precompiled binaries directly.
+
+### 1. Automated Installers (Recommended)
+
+Choose the command for your operating system to download and install the latest native AOT binary automatically:
+
+**Windows (PowerShell):**
+```powershell
+powershell -c "irm https://chkrishna2001.github.io/openertool/install.ps1 | iex"
+```
+
+**macOS & Linux (Bash):**
+```bash
+curl -fsSL https://chkrishna2001.github.io/openertool/install.sh | sh
+```
+
+### 2. Global .NET Tool (NuGet)
+
+If you have the .NET SDK installed, you can install Opener globally via NuGet:
 
 ```bash
 dotnet tool install --global com.chirravuris.opener
 ```
 
-Once installed, use the shorthand command `o`.
+### 3. Manual Download
+
+You can download the precompiled native standalone binaries directly from the latest [GitHub Releases](https://github.com/chkrishna2001/openertool/releases).
+
+Once installed, use the shorthand command `o` to access the tool.
 
 ## ✨ Features
 

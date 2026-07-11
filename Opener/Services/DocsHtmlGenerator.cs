@@ -562,9 +562,29 @@ public static class DocsHtmlGenerator
             <p><strong>Opener solves all of this</strong> by providing a single, unified, secure CLI vault. You register your shortcuts, scripts, and endpoints once under simple, custom keys, and Opener executes them instantly with one shorthand command: <code>o &lt;key&gt;</code>.</p>
 
             <h2>Installation</h2>
-            <p>Opener is distributed as a global .NET tool. Install it using the dotnet SDK command line:</p>
-            <pre><code>dotnet tool install --global com.chirravuris.opener</code></pre>
-            <p>Once installed, you can use the shorthand command <code>o</code> to access the tool.</p>
+            <p>Opener can be installed using automated scripts, as a global .NET tool, or by downloading precompiled binaries directly.</p>
+            
+            <h3 style="margin-top: 20px; font-size: 1.1rem; color: var(--text-heading);">1. Automated Installers (Recommended)</h3>
+            <p>Choose the command for your operating system to download and install the native AOT binary automatically:</p>
+            
+            <div style="margin-top: 10px; margin-bottom: 15px;">
+                <strong>Windows (PowerShell):</strong>
+                <pre style="margin-top: 5px;"><code>powershell -c "irm https://chkrishna2001.github.io/openertool/install.ps1 | iex"</code></pre>
+            </div>
+            
+            <div style="margin-bottom: 20px;">
+                <strong>macOS & Linux (Bash):</strong>
+                <pre style="margin-top: 5px;"><code>curl -fsSL https://chkrishna2001.github.io/openertool/install.sh | sh</code></pre>
+            </div>
+            
+            <h3 style="margin-top: 20px; font-size: 1.1rem; color: var(--text-heading);">2. Global .NET Tool (NuGet)</h3>
+            <p>If you have the .NET SDK installed, you can install Opener globally via NuGet:</p>
+            <pre style="margin-top: 5px;"><code>dotnet tool install --global com.chirravuris.opener</code></pre>
+            
+            <h3 style="margin-top: 20px; font-size: 1.1rem; color: var(--text-heading);">3. Manual Download</h3>
+            <p>You can download the precompiled native standalone binaries directly from the latest <a href="https://github.com/chkrishna2001/openertool/releases" target="_blank" style="color: var(--accent-primary); text-decoration: underline;">GitHub Releases</a>.</p>
+            
+            <p style="margin-top: 15px;">Once installed, you can use the shorthand command <code>o</code> to access the tool from your terminal.</p>
 
             <h2>Core Capabilities</h2>
             <div class="grid-2">

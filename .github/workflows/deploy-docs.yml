@@ -34,10 +34,14 @@ jobs:
       - name: Generate HTML Documentation
         run: |
           dotnet run --project Opener/Opener.csproj --framework net10.0 -- docs -o ./public/index.html
+          cp scripts/install.sh public/install.sh
+          cp scripts/install.ps1 public/install.ps1
 
       # Deploy to Local Repository GitHub Pages
       - name: Setup Pages
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload Pages Artifact
         uses: actions/upload-pages-artifact@v3

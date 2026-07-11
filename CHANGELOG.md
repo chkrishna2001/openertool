@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] - 2026-07-11
+
+### Added
+- Standalone native AOT compilation for multiple platform/architecture combinations: Windows (`win-x64`, `win-arm64`), Linux (`linux-x64`, `linux-arm64`), and macOS (`osx-x64`, `osx-arm64`), published as GitHub Release assets.
+- Automated installation scripts hosted on GitHub Pages: `install.ps1` for Windows, and `install.sh` for macOS/Linux.
+- Updated documentation pages and README with guidance for script-based and manual release installations.
+
 ## [1.0.9] - 2026-07-06
 
 ### Added
