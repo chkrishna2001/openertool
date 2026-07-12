@@ -21,42 +21,242 @@ public static class CredentialServiceFactory
         {
             return new WindowsCredentialService();
         }
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return new SecretToolCredentialService();
+        }
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            return new MacKeychainCredentialService();
+        }
         return new FileCredentialService();
     }
 }
 
 /// <summary>
-/// Fallback for non-Windows platforms (e.g. Linux Docker).
-/// Stores password in a plain text file in the user's home directory.
-/// Note: In a real app, we'd use SecretService/Keyring on Linux, 
-/// but for a simple tool/testing, this is the fallback.
+/// Fallback for platforms/environments where no OS keychain integration is available
+/// (e.g. secret-tool/security missing, or an unrecognized OS).
+/// Stores the password encrypted (AES-256-GCM, via the same machine-derived-key pattern
+/// used by <see cref="MachineLocalEncryptionService"/>) in a file in the user's home
+/// directory - never in plain text.
 /// </summary>
 public class FileCredentialService : ICredentialService
 {
     private readonly string _path;
+    private readonly string _keyPath;
 
-    public FileCredentialService()
+    public FileCredentialService(string? basePathOverride = null)
     {
-        var home = ExecutionContextHelper.GetExecutionContextPath();
-        _path = Path.Combine(home, ".opener", ".internal_pass");
+        var home = basePathOverride ?? ExecutionContextHelper.GetExecutionContextPath();
+        var dir = Path.Combine(home, ".opener");
+        _path = Path.Combine(dir, ".internal_pass");
+        _keyPath = Path.Combine(dir, ".cred_key");
     }
 
     public string? GetPassword()
     {
         if (!File.Exists(_path)) return null;
-        try { return File.ReadAllText(_path); } catch { return null; }
+        try
+        {
+            var key = MachineKeyStore.GetOrCreateKey(_keyPath);
+            var encryptor = new PortableEncryptionService(key);
+            var cipherText = File.ReadAllText(_path);
+            return encryptor.Decrypt(cipherText);
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public void SetPassword(string password)
     {
         var dir = Path.GetDirectoryName(_path);
         if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-        File.WriteAllText(_path, password);
+
+        var key = MachineKeyStore.GetOrCreateKey(_keyPath);
+        var encryptor = new PortableEncryptionService(key);
+        File.WriteAllText(_path, encryptor.Encrypt(password));
+        MachineKeyStore.SecureFilePermissions(_path);
     }
 
     public void ClearPassword()
     {
         if (File.Exists(_path)) File.Delete(_path);
+    }
+}
+
+/// <summary>
+/// Linux credential store backed by the freedesktop.org Secret Service, via the
+/// `secret-tool` CLI (part of libsecret; typically ships with GNOME Keyring/KWallet
+/// integration). Falls back to the encrypted file-based store when `secret-tool`
+/// is not present on PATH, or when a keychain call unexpectedly fails.
+/// </summary>
+public class SecretToolCredentialService : ICredentialService
+{
+    private const string CommandName = "secret-tool";
+    private const string ServiceAttribute = "opener";
+
+    private readonly IProcessRunner _runner;
+    private readonly ICredentialService _fallback;
+    private readonly string _account;
+
+    public SecretToolCredentialService(IProcessRunner? runner = null, ICredentialService? fallback = null)
+    {
+        _runner = runner ?? new SystemProcessRunner();
+        _fallback = fallback ?? new FileCredentialService();
+        _account = Environment.UserName;
+    }
+
+    private bool IsAvailable => _runner.CommandExists(CommandName);
+
+    public string? GetPassword()
+    {
+        if (!IsAvailable) return _fallback.GetPassword();
+
+        try
+        {
+            var result = _runner.Run(CommandName, new[] { "lookup", "service", ServiceAttribute, "username", _account });
+            if (result.ExitCode == 0 && !string.IsNullOrEmpty(result.StandardOutput))
+            {
+                return result.StandardOutput.TrimEnd('\r', '\n');
+            }
+            return null;
+        }
+        catch
+        {
+            return _fallback.GetPassword();
+        }
+    }
+
+    public void SetPassword(string password)
+    {
+        if (!IsAvailable)
+        {
+            _fallback.SetPassword(password);
+            return;
+        }
+
+        try
+        {
+            var result = _runner.Run(
+                CommandName,
+                new[] { "store", "--label=Opener CLI", "service", ServiceAttribute, "username", _account },
+                password);
+
+            if (result.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"secret-tool store failed: {result.StandardError}");
+            }
+        }
+        catch
+        {
+            _fallback.SetPassword(password);
+        }
+    }
+
+    public void ClearPassword()
+    {
+        if (IsAvailable)
+        {
+            try
+            {
+                _runner.Run(CommandName, new[] { "clear", "service", ServiceAttribute, "username", _account });
+            }
+            catch
+            {
+                // Best-effort; fall through to also clear any stale fallback file below.
+            }
+        }
+
+        _fallback.ClearPassword();
+    }
+}
+
+/// <summary>
+/// macOS credential store backed by the login Keychain, via the `security` CLI.
+/// Falls back to the encrypted file-based store when `security` is not present
+/// on PATH, or when a keychain call unexpectedly fails.
+/// </summary>
+public class MacKeychainCredentialService : ICredentialService
+{
+    private const string CommandName = "security";
+    private const string ServiceName = "opener";
+
+    private readonly IProcessRunner _runner;
+    private readonly ICredentialService _fallback;
+    private readonly string _account;
+
+    public MacKeychainCredentialService(IProcessRunner? runner = null, ICredentialService? fallback = null)
+    {
+        _runner = runner ?? new SystemProcessRunner();
+        _fallback = fallback ?? new FileCredentialService();
+        _account = Environment.UserName;
+    }
+
+    private bool IsAvailable => _runner.CommandExists(CommandName);
+
+    public string? GetPassword()
+    {
+        if (!IsAvailable) return _fallback.GetPassword();
+
+        try
+        {
+            var result = _runner.Run(CommandName, new[] { "find-generic-password", "-a", _account, "-s", ServiceName, "-w" });
+            if (result.ExitCode == 0)
+            {
+                var value = result.StandardOutput.TrimEnd('\r', '\n');
+                return string.IsNullOrEmpty(value) ? null : value;
+            }
+            return null;
+        }
+        catch
+        {
+            return _fallback.GetPassword();
+        }
+    }
+
+    public void SetPassword(string password)
+    {
+        if (!IsAvailable)
+        {
+            _fallback.SetPassword(password);
+            return;
+        }
+
+        try
+        {
+            // -U: update the item in place if one already exists for this account/service.
+            var result = _runner.Run(
+                CommandName,
+                new[] { "add-generic-password", "-a", _account, "-s", ServiceName, "-w", password, "-U" });
+
+            if (result.ExitCode != 0)
+            {
+                throw new InvalidOperationException($"security add-generic-password failed: {result.StandardError}");
+            }
+        }
+        catch
+        {
+            _fallback.SetPassword(password);
+        }
+    }
+
+    public void ClearPassword()
+    {
+        if (IsAvailable)
+        {
+            try
+            {
+                _runner.Run(CommandName, new[] { "delete-generic-password", "-a", _account, "-s", ServiceName });
+            }
+            catch
+            {
+                // Best-effort; fall through to also clear any stale fallback file below.
+            }
+        }
+
+        _fallback.ClearPassword();
     }
 }
 

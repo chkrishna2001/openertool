@@ -2,7 +2,6 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.IO;
-using System.Diagnostics;
 
 namespace Opener.Services;
 
@@ -173,30 +172,63 @@ public class MachineLocalEncryptionService : IEncryptionService
         _aesService = new PortableEncryptionService(key);
     }
 
-    private string GetOrCreateKey()
-    {
-        if (File.Exists(_keyPath))
-        {
-            return File.ReadAllText(_keyPath);
-        }
-
-        string newKey = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
-        File.WriteAllText(_keyPath, newKey);
-        
-        // Try to set permissions to 600 on Linux/macOS
-        try 
-        {
-            if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            {
-                Process.Start("chmod", $"600 {_keyPath}");
-            }
-        } catch { /* ignore if chmod fails */ }
-
-        return newKey;
-    }
+    private string GetOrCreateKey() => MachineKeyStore.GetOrCreateKey(_keyPath);
 
     public string Encrypt(string plainText) => _aesService.Encrypt(plainText);
     public string Decrypt(string cipherText) => _aesService.Decrypt(cipherText);
 }
 
+/// <summary>
+/// Shared helper for generating/reading a persistent machine-local key file used to derive
+/// encryption keys for local (non-portable) storage of secrets - e.g. the 'Local' encryption
+/// mode key and the encrypted fallback credential file on non-Windows platforms.
+/// </summary>
+public static class MachineKeyStore
+{
+    /// <summary>
+    /// Reads the key at <paramref name="keyPath"/>, creating it (and its parent directory)
+    /// with a new random key if it doesn't already exist.
+    /// </summary>
+    public static string GetOrCreateKey(string keyPath)
+    {
+        var dir = Path.GetDirectoryName(keyPath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
+
+        if (File.Exists(keyPath))
+        {
+            return File.ReadAllText(keyPath);
+        }
+
+        string newKey = Guid.NewGuid().ToString("N") + Guid.NewGuid().ToString("N");
+        File.WriteAllText(keyPath, newKey);
+        SecureFilePermissions(keyPath);
+
+        return newKey;
+    }
+
+    /// <summary>
+    /// Restricts a sensitive file to owner read/write on Linux/macOS. No-op on Windows
+    /// (ACLs are already scoped to the current user's profile there).
+    /// Any failure is logged as a non-fatal warning rather than silently swallowed.
+    /// </summary>
+    public static void SecureFilePermissions(string path)
+    {
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"Warning: Could not restrict permissions on '{path}': {ex.Message}");
+        }
+    }
+}
 
