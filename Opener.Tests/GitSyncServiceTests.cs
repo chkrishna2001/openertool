@@ -28,7 +28,7 @@ public class GitSyncServiceTests : IDisposable
 
         _configMock.Setup(c => c.GetDataFilePath()).Returns(_dataFile);
         _runnerMock.Setup(r => r.CommandExists("git")).Returns(true);
-        _runnerMock.Setup(r => r.Run("git", It.IsAny<string[]>(), null)).Returns(new ProcessRunResult(0, "", ""));
+        _runnerMock.Setup(r => r.Run("git", It.IsAny<string[]>(), null, It.IsAny<TimeSpan?>())).Returns(new ProcessRunResult(0, "", ""));
     }
 
     private GitSyncService CreateService() =>
@@ -44,7 +44,7 @@ public class GitSyncServiceTests : IDisposable
 
         Assert.False(result.Success);
         Assert.Contains("no sync remote", result.Message, StringComparison.OrdinalIgnoreCase);
-        _runnerMock.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>()), Times.Never);
+        _runnerMock.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()), Times.Never);
     }
 
     [Fact]
@@ -82,9 +82,9 @@ public class GitSyncServiceTests : IDisposable
         var result = await service.PushAsync();
 
         Assert.True(result.Success);
-        _runnerMock.Verify(r => r.Run("git", It.Is<string[]>(a => a.Contains("init")), null), Times.Once);
+        _runnerMock.Verify(r => r.Run("git", It.Is<string[]>(a => a.Contains("init")), null, It.IsAny<TimeSpan?>()), Times.Once);
         _runnerMock.Verify(r => r.Run("git", It.Is<string[]>(a =>
-            a.Contains("push") && !a.Any(x => x.Contains("extraheader"))), null), Times.Once);
+            a.Contains("push") && !a.Any(x => x.Contains("extraheader"))), null, It.IsAny<TimeSpan?>()), Times.Once);
         Assert.True(File.Exists(Path.Combine(_syncRepoDir, "opener.dat")));
     }
 
@@ -99,7 +99,7 @@ public class GitSyncServiceTests : IDisposable
 
         Assert.True(result.Success);
         _runnerMock.Verify(r => r.Run("git", It.Is<string[]>(a =>
-            a.Contains("push") && a.Any(x => x.StartsWith("http.extraheader="))), null), Times.Once);
+            a.Contains("push") && a.Any(x => x.StartsWith("http.extraheader="))), null, It.IsAny<TimeSpan?>()), Times.Once);
 
         // The token must only ever appear in the in-memory process arguments for that one
         // call - never written into any file under the sync repo (e.g. via git config).
@@ -120,14 +120,14 @@ public class GitSyncServiceTests : IDisposable
 
         Assert.True(result.Success);
         _runnerMock.Verify(r => r.Run("git", It.Is<string[]>(a =>
-            a.Contains("push") && !a.Any(x => x.Contains("extraheader"))), null), Times.Once);
+            a.Contains("push") && !a.Any(x => x.Contains("extraheader"))), null, It.IsAny<TimeSpan?>()), Times.Once);
     }
 
     [Fact]
     public async Task PullAsync_ConflictOrFailure_AbortsMergeAndDoesNotTouchLocalVault()
     {
         _configMock.Setup(c => c.GetConfig()).Returns(new OpenerConfig { GitSyncRemote = "git@github.com:me/vault.git" });
-        _runnerMock.Setup(r => r.Run("git", It.Is<string[]>(a => a.Contains("pull")), null))
+        _runnerMock.Setup(r => r.Run("git", It.Is<string[]>(a => a.Contains("pull")), null, It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(1, "", "CONFLICT (add/add): merge conflict in opener.dat"));
         var originalContent = File.ReadAllText(_dataFile);
         var service = CreateService();
@@ -135,7 +135,7 @@ public class GitSyncServiceTests : IDisposable
         var result = await service.PullAsync();
 
         Assert.False(result.Success);
-        _runnerMock.Verify(r => r.Run("git", It.Is<string[]>(a => a.Contains("merge") && a.Contains("--abort")), null), Times.Once);
+        _runnerMock.Verify(r => r.Run("git", It.Is<string[]>(a => a.Contains("merge") && a.Contains("--abort")), null, It.IsAny<TimeSpan?>()), Times.Once);
         Assert.Equal(originalContent, File.ReadAllText(_dataFile));
     }
 
@@ -143,8 +143,8 @@ public class GitSyncServiceTests : IDisposable
     public async Task PullAsync_Success_BacksUpCurrentVaultBeforeOverwriting()
     {
         _configMock.Setup(c => c.GetConfig()).Returns(new OpenerConfig { GitSyncRemote = "git@github.com:me/vault.git" });
-        _runnerMock.Setup(r => r.Run("git", It.Is<string[]>(a => a.Contains("pull")), null))
-            .Returns<string, string[], string?>((_, _, _) =>
+        _runnerMock.Setup(r => r.Run("git", It.Is<string[]>(a => a.Contains("pull")), null, It.IsAny<TimeSpan?>()))
+            .Returns<string, string[], string?, TimeSpan?>((_, _, _, _) =>
             {
                 Directory.CreateDirectory(_syncRepoDir);
                 File.WriteAllText(Path.Combine(_syncRepoDir, "opener.dat"), "pulled-content-from-remote");
@@ -173,7 +173,7 @@ public class GitSyncServiceTests : IDisposable
         var result = await service.PullAsync();
 
         Assert.False(result.Success);
-        _runnerMock.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>()), Times.Never);
+        _runnerMock.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()), Times.Never);
     }
 
     [Fact]

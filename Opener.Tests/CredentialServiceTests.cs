@@ -17,7 +17,7 @@ public class CredentialServiceTests
         runner.Setup(r => r.CommandExists("secret-tool")).Returns(true);
         runner.Setup(r => r.Run("secret-tool", It.Is<string[]>(a =>
                 a.Length == 5 && a[0] == "lookup" && a[1] == "service" && a[2] == "opener" && a[3] == "username"),
-                null))
+                null, It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(0, "super-secret\n", ""));
 
         var fallback = new Mock<ICredentialService>();
@@ -36,7 +36,7 @@ public class CredentialServiceTests
         runner.Setup(r => r.CommandExists("secret-tool")).Returns(true);
         runner.Setup(r => r.Run("secret-tool", It.Is<string[]>(a =>
                 a[0] == "store" && a[1] == "--label=Opener CLI" && a[2] == "service" && a[3] == "opener" && a[4] == "username"),
-                "my-password"))
+                "my-password", It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(0, "", ""));
 
         var fallback = new Mock<ICredentialService>();
@@ -44,7 +44,7 @@ public class CredentialServiceTests
 
         service.SetPassword("my-password");
 
-        runner.Verify(r => r.Run("secret-tool", It.IsAny<string[]>(), "my-password"), Times.Once);
+        runner.Verify(r => r.Run("secret-tool", It.IsAny<string[]>(), "my-password", It.IsAny<TimeSpan?>()), Times.Once);
         fallback.Verify(f => f.SetPassword(It.IsAny<string>()), Times.Never);
     }
 
@@ -53,7 +53,7 @@ public class CredentialServiceTests
     {
         var runner = new Mock<IProcessRunner>();
         runner.Setup(r => r.CommandExists("secret-tool")).Returns(true);
-        runner.Setup(r => r.Run("secret-tool", It.Is<string[]>(a => a[0] == "clear"), null))
+        runner.Setup(r => r.Run("secret-tool", It.Is<string[]>(a => a[0] == "clear"), null, It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(0, "", ""));
 
         var fallback = new Mock<ICredentialService>();
@@ -61,7 +61,7 @@ public class CredentialServiceTests
 
         service.ClearPassword();
 
-        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a[0] == "clear"), null), Times.Once);
+        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a[0] == "clear"), null, It.IsAny<TimeSpan?>()), Times.Once);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class CredentialServiceTests
         fallback.Verify(f => f.GetPassword(), Times.Once);
         fallback.Verify(f => f.SetPassword("abc"), Times.Once);
         fallback.Verify(f => f.ClearPassword(), Times.Once);
-        runner.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>()), Times.Never);
+        runner.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()), Times.Never);
     }
 
     [Fact]
@@ -90,7 +90,7 @@ public class CredentialServiceTests
     {
         var runner = new Mock<IProcessRunner>();
         runner.Setup(r => r.CommandExists("secret-tool")).Returns(true);
-        runner.Setup(r => r.Run("secret-tool", It.IsAny<string[]>(), It.IsAny<string?>()))
+        runner.Setup(r => r.Run("secret-tool", It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(1, "", "no keyring daemon"));
 
         var fallback = new Mock<ICredentialService>();
@@ -110,7 +110,7 @@ public class CredentialServiceTests
         runner.Setup(r => r.CommandExists("security")).Returns(true);
         runner.Setup(r => r.Run("security", It.Is<string[]>(a =>
                 a[0] == "find-generic-password" && a[1] == "-a" && a[3] == "-s" && a[4] == "opener" && a[5] == "-w"),
-                null))
+                null, It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(0, "super-secret\n", ""));
 
         var fallback = new Mock<ICredentialService>();
@@ -129,7 +129,7 @@ public class CredentialServiceTests
         runner.Setup(r => r.CommandExists("security")).Returns(true);
         runner.Setup(r => r.Run("security", It.Is<string[]>(a =>
                 a[0] == "add-generic-password" && a[1] == "-a" && a[3] == "-s" && a[4] == "opener" && a[5] == "-w" && a[6] == "my-password" && a[7] == "-U"),
-                null))
+                null, It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(0, "", ""));
 
         var fallback = new Mock<ICredentialService>();
@@ -158,7 +158,7 @@ public class CredentialServiceTests
         fallback.Verify(f => f.GetPassword(), Times.Once);
         fallback.Verify(f => f.SetPassword("abc"), Times.Once);
         fallback.Verify(f => f.ClearPassword(), Times.Once);
-        runner.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>()), Times.Never);
+        runner.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()), Times.Never);
     }
 
     // ---------- Purpose separation (e.g. vault unlock password vs git-sync token) ----------
@@ -168,7 +168,7 @@ public class CredentialServiceTests
     {
         var runner = new Mock<IProcessRunner>();
         runner.Setup(r => r.CommandExists("secret-tool")).Returns(true);
-        runner.Setup(r => r.Run("secret-tool", It.IsAny<string[]>(), It.IsAny<string?>()))
+        runner.Setup(r => r.Run("secret-tool", It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(0, "", ""));
 
         var vaultService = new SecretToolCredentialService(runner.Object, new Mock<ICredentialService>().Object, purpose: "vault");
@@ -177,8 +177,8 @@ public class CredentialServiceTests
         vaultService.SetPassword("vault-secret");
         gitSyncService.SetPassword("git-token");
 
-        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a.Contains("opener")), "vault-secret"), Times.Once);
-        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a.Contains("opener-git-sync")), "git-token"), Times.Once);
+        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a.Contains("opener")), "vault-secret", It.IsAny<TimeSpan?>()), Times.Once);
+        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a.Contains("opener-git-sync")), "git-token", It.IsAny<TimeSpan?>()), Times.Once);
     }
 
     [Fact]
@@ -186,7 +186,7 @@ public class CredentialServiceTests
     {
         var runner = new Mock<IProcessRunner>();
         runner.Setup(r => r.CommandExists("security")).Returns(true);
-        runner.Setup(r => r.Run("security", It.IsAny<string[]>(), It.IsAny<string?>()))
+        runner.Setup(r => r.Run("security", It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()))
             .Returns(new ProcessRunResult(0, "", ""));
 
         var vaultService = new MacKeychainCredentialService(runner.Object, new Mock<ICredentialService>().Object, purpose: "vault");
@@ -195,8 +195,8 @@ public class CredentialServiceTests
         vaultService.SetPassword("vault-secret");
         gitSyncService.SetPassword("git-token");
 
-        runner.Verify(r => r.Run("security", It.Is<string[]>(a => a.Contains("opener")), null), Times.Once);
-        runner.Verify(r => r.Run("security", It.Is<string[]>(a => a.Contains("opener-git-sync")), null), Times.Once);
+        runner.Verify(r => r.Run("security", It.Is<string[]>(a => a.Contains("opener")), null, It.IsAny<TimeSpan?>()), Times.Once);
+        runner.Verify(r => r.Run("security", It.Is<string[]>(a => a.Contains("opener-git-sync")), null, It.IsAny<TimeSpan?>()), Times.Once);
     }
 
 }

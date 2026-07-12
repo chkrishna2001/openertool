@@ -24,8 +24,13 @@ public interface IProcessRunner
     /// <summary>
     /// Runs the given command with the given arguments, optionally piping
     /// <paramref name="standardInput"/> to the process's stdin, and waits for exit.
+    /// Bounded by <paramref name="timeout"/> - if the process doesn't exit in time it's
+    /// killed and a <see cref="TimeoutException"/> is thrown, rather than blocking forever.
+    /// This matters most in headless environments (e.g. CI): a keychain/credential-store
+    /// CLI (secret-tool, security) can block waiting for an interactive authorization
+    /// prompt that will never come.
     /// </summary>
-    ProcessRunResult Run(string fileName, string[] arguments, string? standardInput = null);
+    ProcessRunResult Run(string fileName, string[] arguments, string? standardInput = null, TimeSpan? timeout = null);
 }
 
 /// <summary>
@@ -33,6 +38,8 @@ public interface IProcessRunner
 /// </summary>
 public class SystemProcessRunner : IProcessRunner
 {
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(20);
+
     public bool CommandExists(string command)
     {
         try
@@ -47,7 +54,7 @@ public class SystemProcessRunner : IProcessRunner
         }
     }
 
-    public ProcessRunResult Run(string fileName, string[] arguments, string? standardInput = null)
+    public ProcessRunResult Run(string fileName, string[] arguments, string? standardInput = null, TimeSpan? timeout = null)
     {
         var psi = new ProcessStartInfo
         {
@@ -76,9 +83,21 @@ public class SystemProcessRunner : IProcessRunner
             process.StandardInput.Close();
         }
 
-        string stdout = process.StandardOutput.ReadToEnd();
-        string stderr = process.StandardError.ReadToEnd();
-        process.WaitForExit();
+        // Read both streams concurrently (not sequential ReadToEnd calls) to avoid a
+        // classic pipe deadlock: a process can block writing to a full stderr pipe while
+        // we're only draining stdout, or vice versa.
+        var stdoutTask = process.StandardOutput.ReadToEndAsync();
+        var stderrTask = process.StandardError.ReadToEndAsync();
+
+        var effectiveTimeout = timeout ?? DefaultTimeout;
+        if (!process.WaitForExit((int)effectiveTimeout.TotalMilliseconds))
+        {
+            try { process.Kill(entireProcessTree: true); } catch { /* best-effort */ }
+            throw new TimeoutException($"'{fileName}' timed out after {effectiveTimeout.TotalSeconds}s and was terminated.");
+        }
+
+        string stdout = stdoutTask.GetAwaiter().GetResult();
+        string stderr = stderrTask.GetAwaiter().GetResult();
 
         return new ProcessRunResult(process.ExitCode, stdout, stderr);
     }

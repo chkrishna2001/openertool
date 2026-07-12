@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `Rest` keys had the same case-sensitivity bug — the documented lowercase JSON shape (`"url"`, `"method"`) never actually parsed.
 - `tests/integration_test.sh` was broken by the credential-storage change above (it seeded a now-encrypted credential file with plaintext); both integration test scripts now drive setup through the actual CLI and cover today's new features.
 - `SystemProcessRunner.CommandExists` used `which`, which isn't available on plain Windows; it now uses `where` there.
+- External process calls (`secret-tool`, `security`, `git`) had no timeout, so a keychain/credential-store CLI blocking on an interactive authorization prompt in a headless environment (e.g. a CI runner) could hang the whole process forever — this is what caused the `integration_test.ps1` CI job to appear stuck on `config set-encryption portable` on macOS. `IProcessRunner.Run` now bounds every call (20s default) and kills the process on timeout instead of blocking indefinitely; every existing call site already had fallback/error handling in place to absorb the resulting failure cleanly. Also fixed a related sequential-stream-read deadlock risk by reading stdout/stderr concurrently instead of one after the other.
 
 ### Security
 - Removed a committed encrypted backup file (`backup.dat`) from the repository and added `*.dat` to `.gitignore`.
