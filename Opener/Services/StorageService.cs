@@ -91,7 +91,7 @@ public class StorageService : IStorageService
             throw new Exception(
                 $"Unable to read storage file at {filePath}. Access denied. " +
                 $"If this path is under OneDrive, the folder may not be fully synced. " +
-                $"For better OneDrive support, use the 'cloud' command to store data via Microsoft Graph API.", ex);
+                $"Move your storage off the OneDrive-synced folder ('o config set-location') and use 'o sync' (git-based) or manual backups instead.", ex);
         }
         catch (Exception ex)
         {
@@ -117,7 +117,7 @@ public class StorageService : IStorageService
             throw new Exception(
                 $"Unable to write storage file at {filePath}. Access denied. " +
                 $"If this path is under OneDrive, the folder may not be fully synced. " +
-                $"For better OneDrive support, use the 'cloud' command to store data via Microsoft Graph API.", ex);
+                $"Move your storage off the OneDrive-synced folder ('o config set-location') and use 'o sync' (git-based) or manual backups instead.", ex);
         }
         catch (Exception ex)
         {

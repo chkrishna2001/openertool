@@ -69,7 +69,7 @@ public class SetLocationCommand : Command
                     _console.MarkupLine($"[red]Cannot write to directory:[/] {ex.Message}");
                     if (path.IndexOf("OneDrive", StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        _console.MarkupLine("[yellow]This path is on OneDrive. Try a local folder (Desktop, Documents) or use 'o cloud' for OneDrive support.[/]");
+                        _console.MarkupLine("[yellow]This path is on OneDrive. Try a local folder (Desktop, Documents) instead, and use 'o sync' (git-based) if you need to sync across machines.[/]");
                     }
                     else if (path.IndexOf("Documents", StringComparison.OrdinalIgnoreCase) >= 0)
                     {

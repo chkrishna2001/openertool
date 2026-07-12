@@ -235,34 +235,22 @@ A pull conflict (two machines changed the vault before syncing) isn't auto-merge
 merging an opaque encrypted blob is meaningless — it aborts cleanly and tells you to resolve
 it manually (your data is safe either way, since a pull always backs up first).
 
-## ☁️ Portable Mode & Cloud Sync
+## ☁️ Portable Mode & Cross-Machine Sync
 
-By default, Opener uses **Local Encryption** which is tied to your machine. For cross-platform sync and cloud storage, Opener supports multiple approaches:
+By default, Opener uses **Local Encryption** which is tied to your machine and doesn't sync anywhere. To use your vault across multiple machines, you have two options:
 
-### 1. Microsoft Graph API Integration (Recommended for OneDrive)
+### 1. Git-Based Vault Sync (Recommended)
 
-The `cloud` command provides proper OneDrive access via Microsoft Graph API, which works reliably across **Windows, macOS, and Linux**:
-
-```bash
-# Authenticate with your Microsoft account
-o cloud auth
-
-# Store data in OneDrive via Graph API
-o cloud set-location
-
-# Your keys are now synced to OneDrive automatically
-```
-
-This approach bypasses OneDrive's virtual filesystem layer and works on all platforms.
+See the **Git-Based Vault Sync** section above — push/pull your encrypted vault through a git remote (GitHub, GitLab, self-hosted, whatever you already use). Works identically on **Windows, macOS, and Linux**, and sidesteps the OneDrive Files-On-Demand problem below entirely, since it never depends on a cloud-storage client's local sync agent.
 
 ### 2. Local Storage with Manual Sync
 
-For maximum compatibility, store keys locally and manually sync the encrypted file:
+For maximum compatibility, switch to portable (password-based) encryption and manually sync the resulting file yourself, with whatever tool you already use:
 
 ```bash
-o config set-location "/path/to/local/folder"
-o config set-encryption portable
-# Then manually backup /path/to/local/folder/opener.dat to cloud
+o config set-location "/path/to/local/folder/opener.dat"
+o config set-encryption portable --password your-secret
+# Then sync /path/to/local/folder/opener.dat however you like (cloud-storage app, git, USB drive, ...)
 ```
 
 ### Important Note on OneDrive Files On-Demand
@@ -271,12 +259,11 @@ o config set-encryption portable
 - OneDrive **Files On-Demand** (Windows 10/11) creates placeholder files that don't work with direct file I/O
 - This affects any application trying to access unmaterialized files, not just Opener
 - Windows Explorer shows these files, but .NET applications cannot access them until materialized
-- **Solution**: Use the `cloud` command with Graph API instead, which bypasses this limitation
+- **Solution**: don't point Opener's storage location at a OneDrive-synced folder — use a local folder (`o config set-location`) plus **Git-Based Vault Sync** instead
 
-This limitation does **not** apply to:
-- Google Drive (no native Linux support, but works on Windows/macOS)
-- Local storage
-- Microsoft Graph API (our recommended cross-platform solution)
+This limitation does **not** apply to local storage or to git-based sync.
+
+> **Note:** `o config auth-graph` / `o config set-provider graph` authenticate against Microsoft Graph for **sending email and creating calendar events** (`EmailTemplate`/`CalendarEvent` keys) — they don't store or sync your vault. There is currently no OneDrive/SharePoint storage backend for the vault itself.
 
 ## ⚙️ Configuration
 
