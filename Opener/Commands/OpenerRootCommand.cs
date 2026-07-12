@@ -17,6 +17,7 @@ public class OpenerRootCommand : RootCommand
         IActionService actionService,
         ICredentialService credentialService,
         IGraphAuthService graphAuthService,
+        IGitSyncService gitSyncService,
         IAnsiConsole? console = null)
         : base("Opener Tool - quickly open links, paths, stored data, and REST shortcuts.\n\n" +
                "Examples:\n" +
@@ -51,15 +52,16 @@ public class OpenerRootCommand : RootCommand
         AddOption(viewOpt);
 
         // --- Register Subcommands ---
-        AddCommand(new AddCommand(storageService, console));
-        AddCommand(new UpdateCommand(storageService, console));
-        AddCommand(new DeleteCommand(storageService, console));
+        AddCommand(new AddCommand(storageService, console, configService, gitSyncService));
+        AddCommand(new UpdateCommand(storageService, console, configService, gitSyncService));
+        AddCommand(new DeleteCommand(storageService, console, configService, gitSyncService));
         AddCommand(new ListCommand(storageService, console));
         AddCommand(new ViewCommand(storageService, console));
         AddCommand(new DocsCommand(configService, console));
         AddCommand(new BackupCommand(configService, storageService, console));
         AddCommand(new ExportCommand(storageService, console));
-        AddCommand(new ImportCommand(storageService, console));
+        AddCommand(new ImportCommand(storageService, console, configService, gitSyncService));
+        AddCommand(new SyncCommand(configService, gitSyncService, console));
 
         // Config subcommands structure
         var configCommand = new ConfigCommand();
@@ -73,6 +75,10 @@ public class OpenerRootCommand : RootCommand
         configCommand.AddCommand(new SetDefaultParamsCommand(configService, console));
         configCommand.AddCommand(new ClearDefaultParamsCommand(configService, console));
         configCommand.AddCommand(new ClearDefaultParamCommand(configService, console));
+        configCommand.AddCommand(new SetSyncRemoteCommand(configService, console));
+        configCommand.AddCommand(new SetSyncTokenCommand(console));
+        configCommand.AddCommand(new EnableAutoSyncCommand(configService, console));
+        configCommand.AddCommand(new DisableAutoSyncCommand(configService, console));
 
         var setProviderCommand = new SetProviderCommand();
         setProviderCommand.AddCommand(new SmtpCommand(storageService, console));

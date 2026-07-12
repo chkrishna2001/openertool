@@ -11,7 +11,7 @@ namespace Opener.Commands;
 
 public class ImportCommand : Command
 {
-    public ImportCommand(IStorageService storageService, IAnsiConsole? console = null)
+    public ImportCommand(IStorageService storageService, IAnsiConsole? console = null, IConfigService? configService = null, IGitSyncService? gitSyncService = null)
         : base("import", "Import keys from a portable encrypted backup file. Existing keys with the same name are updated.\n\n" +
                         "Example:\n" +
                         "  o import backup.dat --password my-export-password")
@@ -68,6 +68,7 @@ public class ImportCommand : Command
                     }
                     storageService.SaveKeys(currentKeys);
                     _console.MarkupLine($"[green]Import successful. Added: {added}, Updated: {updated}[/]");
+                    AutoSyncCoordinator.TriggerIfEnabled(configService, gitSyncService);
                 }
             }
             catch (Exception ex)

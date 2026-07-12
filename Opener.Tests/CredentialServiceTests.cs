@@ -161,6 +161,44 @@ public class CredentialServiceTests
         runner.Verify(r => r.Run(It.IsAny<string>(), It.IsAny<string[]>(), It.IsAny<string?>()), Times.Never);
     }
 
+    // ---------- Purpose separation (e.g. vault unlock password vs git-sync token) ----------
+
+    [Fact]
+    public void SecretTool_DifferentPurposes_UseDifferentServiceAttribute()
+    {
+        var runner = new Mock<IProcessRunner>();
+        runner.Setup(r => r.CommandExists("secret-tool")).Returns(true);
+        runner.Setup(r => r.Run("secret-tool", It.IsAny<string[]>(), It.IsAny<string?>()))
+            .Returns(new ProcessRunResult(0, "", ""));
+
+        var vaultService = new SecretToolCredentialService(runner.Object, new Mock<ICredentialService>().Object, purpose: "vault");
+        var gitSyncService = new SecretToolCredentialService(runner.Object, new Mock<ICredentialService>().Object, purpose: "git-sync");
+
+        vaultService.SetPassword("vault-secret");
+        gitSyncService.SetPassword("git-token");
+
+        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a.Contains("opener")), "vault-secret"), Times.Once);
+        runner.Verify(r => r.Run("secret-tool", It.Is<string[]>(a => a.Contains("opener-git-sync")), "git-token"), Times.Once);
+    }
+
+    [Fact]
+    public void MacKeychain_DifferentPurposes_UseDifferentServiceName()
+    {
+        var runner = new Mock<IProcessRunner>();
+        runner.Setup(r => r.CommandExists("security")).Returns(true);
+        runner.Setup(r => r.Run("security", It.IsAny<string[]>(), It.IsAny<string?>()))
+            .Returns(new ProcessRunResult(0, "", ""));
+
+        var vaultService = new MacKeychainCredentialService(runner.Object, new Mock<ICredentialService>().Object, purpose: "vault");
+        var gitSyncService = new MacKeychainCredentialService(runner.Object, new Mock<ICredentialService>().Object, purpose: "git-sync");
+
+        vaultService.SetPassword("vault-secret");
+        gitSyncService.SetPassword("git-token");
+
+        runner.Verify(r => r.Run("security", It.Is<string[]>(a => a.Contains("opener")), null), Times.Once);
+        runner.Verify(r => r.Run("security", It.Is<string[]>(a => a.Contains("opener-git-sync")), null), Times.Once);
+    }
+
 }
 
 // ---------- FileCredentialService (encrypted fallback file) ----------
@@ -213,6 +251,23 @@ public class FileCredentialServiceTests : IDisposable
         service.ClearPassword();
 
         Assert.Null(service.GetPassword());
+    }
+
+    [Fact]
+    public void DifferentPurposes_DoNotShareAStorageSlot()
+    {
+        var vaultService = new FileCredentialService(_tempHome, purpose: "vault");
+        var gitSyncService = new FileCredentialService(_tempHome, purpose: "git-sync");
+
+        vaultService.SetPassword("vault-secret");
+        gitSyncService.SetPassword("git-token");
+
+        Assert.Equal("vault-secret", vaultService.GetPassword());
+        Assert.Equal("git-token", gitSyncService.GetPassword());
+
+        gitSyncService.ClearPassword();
+        Assert.Null(gitSyncService.GetPassword());
+        Assert.Equal("vault-secret", vaultService.GetPassword());
     }
 
     public void Dispose()

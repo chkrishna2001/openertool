@@ -12,6 +12,8 @@ public class OpenerConfig
     public string EncryptionMode { get; set; } = "local"; // "local" or "portable"
     public Dictionary<string, Dictionary<string, string>> GlobalUrlAliases { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public Dictionary<string, string> GlobalDefaultParams { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public string? GitSyncRemote { get; set; } // e.g. git@github.com:user/opener-vault.git or https://...
+    public bool AutoSyncEnabled { get; set; } = false;
 }
 
 [JsonSerializable(typeof(OpenerConfig))]

@@ -48,6 +48,7 @@ class Program
         var emailService = new EmailService(storageService, graphAuthService);
         var calendarService = new CalendarService(storageService, graphAuthService);
         var actionService = new ActionService(configService, storageService, emailService, calendarService);
+        IGitSyncService gitSyncService = new GitSyncService(configService);
 
         // 1.5 Auto-initialize storage
         try 
@@ -68,12 +69,17 @@ class Program
             storageService,
             actionService,
             credentialService,
-            graphAuthService
+            graphAuthService,
+            gitSyncService
         );
 
         await new CommandLineBuilder(rootCommand)
             .UseDefaults()
             .Build()
             .InvokeAsync(args);
+
+        // Give any auto-sync triggered by this command a bounded chance to finish
+        // before this short-lived process exits.
+        await AutoSyncCoordinator.WaitForPendingAsync(TimeSpan.FromSeconds(5));
     }
 }

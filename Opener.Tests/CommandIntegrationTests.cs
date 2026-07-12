@@ -24,7 +24,15 @@ public class CommandIntegrationTests
     private readonly Mock<IActionService> _actionMock = new();
     private readonly Mock<ICredentialService> _credentialMock = new();
     private readonly Mock<IGraphAuthService> _graphAuthMock = new();
+    private readonly Mock<IGitSyncService> _gitSyncMock = new();
     private readonly TestConsole _testConsole = new();
+
+    public CommandIntegrationTests()
+    {
+        // Baseline so AutoSyncCoordinator (invoked by add/update/delete/import) has a non-null
+        // config to read; AutoSyncEnabled defaults to false, so it no-ops unless a test opts in.
+        _configMock.Setup(c => c.GetConfig()).Returns(new OpenerConfig());
+    }
 
     private Parser CreateParser()
     {
@@ -34,6 +42,7 @@ public class CommandIntegrationTests
             _actionMock.Object,
             _credentialMock.Object,
             _graphAuthMock.Object,
+            _gitSyncMock.Object,
             _testConsole
         );
         return new CommandLineBuilder(root).UseDefaults().Build();

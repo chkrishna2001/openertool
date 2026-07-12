@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 
 namespace Opener.Services;
 
@@ -36,7 +37,8 @@ public class SystemProcessRunner : IProcessRunner
     {
         try
         {
-            var result = Run("which", new[] { command });
+            var lookup = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? "where" : "which";
+            var result = Run(lookup, new[] { command });
             return result.ExitCode == 0 && !string.IsNullOrWhiteSpace(result.StandardOutput);
         }
         catch

@@ -10,7 +10,7 @@ namespace Opener.Commands;
 
 public class UpdateCommand : Command
 {
-    public UpdateCommand(IStorageService storageService, IAnsiConsole? console = null)
+    public UpdateCommand(IStorageService storageService, IAnsiConsole? console = null, IConfigService? configService = null, IGitSyncService? gitSyncService = null)
         : base("update", "Update an existing key's value and optionally replace its per-key URL aliases/default params.\n\n" +
                         "Examples:\n" +
                         "  o update jira \"https://jira.company.com/browse/{0}\"\n" +
@@ -96,6 +96,7 @@ public class UpdateCommand : Command
 
             storageService.SaveKeys(keys);
             _console.MarkupLine($"[green]Key '{k}' updated successfully![/]");
+            AutoSyncCoordinator.TriggerIfEnabled(configService, gitSyncService);
         }, keyArg, valArg, urlAliasesOpt, defaultParamsOpt, elevatedOpt);
     }
 }

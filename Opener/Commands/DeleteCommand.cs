@@ -8,7 +8,7 @@ namespace Opener.Commands;
 
 public class DeleteCommand : Command
 {
-    public DeleteCommand(IStorageService storageService, IAnsiConsole? console = null)
+    public DeleteCommand(IStorageService storageService, IAnsiConsole? console = null, IConfigService? configService = null, IGitSyncService? gitSyncService = null)
         : base("delete", "Delete a stored key.\n\n" +
                         "Example:\n" +
                         "  o delete jira")
@@ -40,6 +40,7 @@ public class DeleteCommand : Command
             keys.Remove(existing);
             storageService.SaveKeys(keys);
             _console.MarkupLine($"[green]Key '{k}' deleted.[/]");
+            AutoSyncCoordinator.TriggerIfEnabled(configService, gitSyncService);
         }, keyArg, confirmOpt);
     }
 }

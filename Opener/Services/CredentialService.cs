@@ -15,21 +15,26 @@ public interface ICredentialService
 
 public static class CredentialServiceFactory
 {
-    public static ICredentialService Create()
+    /// <summary>
+    /// Creates a credential store. <paramref name="purpose"/> selects which credential
+    /// slot to address (e.g. "vault" for the portable-mode unlock password, "git-sync"
+    /// for a git remote's access token) so unrelated secrets never share a slot.
+    /// </summary>
+    public static ICredentialService Create(string purpose = "vault")
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return new WindowsCredentialService();
+            return new WindowsCredentialService(purpose);
         }
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
-            return new SecretToolCredentialService();
+            return new SecretToolCredentialService(purpose: purpose);
         }
         if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
         {
-            return new MacKeychainCredentialService();
+            return new MacKeychainCredentialService(purpose: purpose);
         }
-        return new FileCredentialService();
+        return new FileCredentialService(purpose: purpose);
     }
 }
 
@@ -45,12 +50,13 @@ public class FileCredentialService : ICredentialService
     private readonly string _path;
     private readonly string _keyPath;
 
-    public FileCredentialService(string? basePathOverride = null)
+    public FileCredentialService(string? basePathOverride = null, string purpose = "vault")
     {
         var home = basePathOverride ?? ExecutionContextHelper.GetExecutionContextPath();
         var dir = Path.Combine(home, ".opener");
-        _path = Path.Combine(dir, ".internal_pass");
-        _keyPath = Path.Combine(dir, ".cred_key");
+        var suffix = purpose == "vault" ? string.Empty : $"_{purpose}";
+        _path = Path.Combine(dir, $".internal_pass{suffix}");
+        _keyPath = Path.Combine(dir, $".cred_key{suffix}");
     }
 
     public string? GetPassword()
@@ -95,17 +101,18 @@ public class FileCredentialService : ICredentialService
 public class SecretToolCredentialService : ICredentialService
 {
     private const string CommandName = "secret-tool";
-    private const string ServiceAttribute = "opener";
 
     private readonly IProcessRunner _runner;
     private readonly ICredentialService _fallback;
     private readonly string _account;
+    private readonly string _serviceAttribute;
 
-    public SecretToolCredentialService(IProcessRunner? runner = null, ICredentialService? fallback = null)
+    public SecretToolCredentialService(IProcessRunner? runner = null, ICredentialService? fallback = null, string purpose = "vault")
     {
         _runner = runner ?? new SystemProcessRunner();
-        _fallback = fallback ?? new FileCredentialService();
+        _fallback = fallback ?? new FileCredentialService(purpose: purpose);
         _account = Environment.UserName;
+        _serviceAttribute = purpose == "vault" ? "opener" : $"opener-{purpose}";
     }
 
     private bool IsAvailable => _runner.CommandExists(CommandName);
@@ -116,7 +123,7 @@ public class SecretToolCredentialService : ICredentialService
 
         try
         {
-            var result = _runner.Run(CommandName, new[] { "lookup", "service", ServiceAttribute, "username", _account });
+            var result = _runner.Run(CommandName, new[] { "lookup", "service", _serviceAttribute, "username", _account });
             if (result.ExitCode == 0 && !string.IsNullOrEmpty(result.StandardOutput))
             {
                 return result.StandardOutput.TrimEnd('\r', '\n');
@@ -141,7 +148,7 @@ public class SecretToolCredentialService : ICredentialService
         {
             var result = _runner.Run(
                 CommandName,
-                new[] { "store", "--label=Opener CLI", "service", ServiceAttribute, "username", _account },
+                new[] { "store", "--label=Opener CLI", "service", _serviceAttribute, "username", _account },
                 password);
 
             if (result.ExitCode != 0)
@@ -161,7 +168,7 @@ public class SecretToolCredentialService : ICredentialService
         {
             try
             {
-                _runner.Run(CommandName, new[] { "clear", "service", ServiceAttribute, "username", _account });
+                _runner.Run(CommandName, new[] { "clear", "service", _serviceAttribute, "username", _account });
             }
             catch
             {
@@ -181,17 +188,18 @@ public class SecretToolCredentialService : ICredentialService
 public class MacKeychainCredentialService : ICredentialService
 {
     private const string CommandName = "security";
-    private const string ServiceName = "opener";
 
     private readonly IProcessRunner _runner;
     private readonly ICredentialService _fallback;
     private readonly string _account;
+    private readonly string _serviceName;
 
-    public MacKeychainCredentialService(IProcessRunner? runner = null, ICredentialService? fallback = null)
+    public MacKeychainCredentialService(IProcessRunner? runner = null, ICredentialService? fallback = null, string purpose = "vault")
     {
         _runner = runner ?? new SystemProcessRunner();
-        _fallback = fallback ?? new FileCredentialService();
+        _fallback = fallback ?? new FileCredentialService(purpose: purpose);
         _account = Environment.UserName;
+        _serviceName = purpose == "vault" ? "opener" : $"opener-{purpose}";
     }
 
     private bool IsAvailable => _runner.CommandExists(CommandName);
@@ -202,7 +210,7 @@ public class MacKeychainCredentialService : ICredentialService
 
         try
         {
-            var result = _runner.Run(CommandName, new[] { "find-generic-password", "-a", _account, "-s", ServiceName, "-w" });
+            var result = _runner.Run(CommandName, new[] { "find-generic-password", "-a", _account, "-s", _serviceName, "-w" });
             if (result.ExitCode == 0)
             {
                 var value = result.StandardOutput.TrimEnd('\r', '\n');
@@ -229,7 +237,7 @@ public class MacKeychainCredentialService : ICredentialService
             // -U: update the item in place if one already exists for this account/service.
             var result = _runner.Run(
                 CommandName,
-                new[] { "add-generic-password", "-a", _account, "-s", ServiceName, "-w", password, "-U" });
+                new[] { "add-generic-password", "-a", _account, "-s", _serviceName, "-w", password, "-U" });
 
             if (result.ExitCode != 0)
             {
@@ -248,7 +256,7 @@ public class MacKeychainCredentialService : ICredentialService
         {
             try
             {
-                _runner.Run(CommandName, new[] { "delete-generic-password", "-a", _account, "-s", ServiceName });
+                _runner.Run(CommandName, new[] { "delete-generic-password", "-a", _account, "-s", _serviceName });
             }
             catch
             {
@@ -263,11 +271,16 @@ public class MacKeychainCredentialService : ICredentialService
 [SupportedOSPlatform("windows")]
 public class WindowsCredentialService : ICredentialService
 {
-    private const string CredentialTarget = "OpenerTool_PortableKey";
+    private readonly string _credentialTarget;
+
+    public WindowsCredentialService(string purpose = "vault")
+    {
+        _credentialTarget = purpose == "vault" ? "OpenerTool_PortableKey" : $"OpenerTool_{purpose}";
+    }
 
     public string? GetPassword()
     {
-        bool success = CredRead(CredentialTarget, CRED_TYPE_GENERIC, 0, out IntPtr credentialPtr);
+        bool success = CredRead(_credentialTarget, CRED_TYPE_GENERIC, 0, out IntPtr credentialPtr);
         if (!success) return null;
 
         try
@@ -294,7 +307,7 @@ public class WindowsCredentialService : ICredentialService
         var credential = new CREDENTIAL
         {
             Type = CRED_TYPE_GENERIC,
-            TargetName = CredentialTarget,
+            TargetName = _credentialTarget,
             CredentialBlobSize = (uint)passwordBytes.Length,
             CredentialBlob = Marshal.AllocHGlobal(passwordBytes.Length),
             Persist = CRED_PERSIST_LOCAL_MACHINE,
@@ -318,7 +331,7 @@ public class WindowsCredentialService : ICredentialService
 
     public void ClearPassword()
     {
-        CredDelete(CredentialTarget, CRED_TYPE_GENERIC, 0);
+        CredDelete(_credentialTarget, CRED_TYPE_GENERIC, 0);
     }
 
     // P/Invoke declarations

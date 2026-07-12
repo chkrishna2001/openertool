@@ -10,7 +10,7 @@ namespace Opener.Commands;
 
 public class AddCommand : Command
 {
-    public AddCommand(IStorageService storageService, IAnsiConsole? console = null) 
+    public AddCommand(IStorageService storageService, IAnsiConsole? console = null, IConfigService? configService = null, IGitSyncService? gitSyncService = null)
         : base("add", "Add a new key.\n\n" +
                      "Examples:\n" +
                      "  o add token \"secret-value\" -t Data\n" +
@@ -95,6 +95,7 @@ public class AddCommand : Command
             keys.Add(newKey);
             storageService.SaveKeys(keys);
             _console.MarkupLine($"[green]Key '{k}' added successfully![/]");
+            AutoSyncCoordinator.TriggerIfEnabled(configService, gitSyncService);
         }, keyArg, valArg, typeOpt, urlAliasesOpt, defaultParamsOpt, elevatedOpt);
     }
 }
