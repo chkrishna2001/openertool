@@ -455,4 +455,55 @@ public class CommandIntegrationTests
         Assert.Equal(0, exitCode);
         Assert.Contains("Generating documentation", _testConsole.Output);
     }
+
+    [Fact]
+    public async Task ImplicitKeyExecution_NoKeyProvided_NonInteractiveConsole_FallsBackToStaticListInsteadOfHanging()
+    {
+        var keys = new List<OKey>
+        {
+            new OKey { Key = "alpha", KeyType = OKeyType.WebPath, Description = "first" },
+            new OKey { Key = "beta", KeyType = OKeyType.Data, Description = "second" }
+        };
+        _storageMock.Setup(s => s.GetKeys()).Returns(keys);
+        var parser = CreateParser();
+
+        // TestConsole is non-interactive, so this must not attempt to block on a selection prompt.
+        var exitCode = await parser.InvokeAsync("");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("alpha", _testConsole.Output);
+        Assert.Contains("beta", _testConsole.Output);
+        _actionMock.Verify(a => a.ExecuteAsync(It.IsAny<OKey>(), It.IsAny<string[]>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task ImplicitKeyExecution_NoKeysStored_ReportsNoKeysFoundInsteadOfHanging()
+    {
+        _storageMock.Setup(s => s.GetKeys()).Returns(new List<OKey>());
+        var parser = CreateParser();
+
+        var exitCode = await parser.InvokeAsync("");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("No keys found", _testConsole.Output);
+    }
+
+    [Fact]
+    public async Task ImplicitKeyExecution_SearchMultipleMatches_NonInteractiveConsole_FallsBackToStaticListInsteadOfHanging()
+    {
+        var keys = new List<OKey>
+        {
+            new OKey { Key = "jira-prod", KeyType = OKeyType.WebPath, Description = "prod jira" },
+            new OKey { Key = "jira-dev", KeyType = OKeyType.WebPath, Description = "dev jira" }
+        };
+        _storageMock.Setup(s => s.GetKeys()).Returns(keys);
+        var parser = CreateParser();
+
+        var exitCode = await parser.InvokeAsync("jira -s");
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains("jira-prod", _testConsole.Output);
+        Assert.Contains("jira-dev", _testConsole.Output);
+        _actionMock.Verify(a => a.ExecuteAsync(It.IsAny<OKey>(), It.IsAny<string[]>(), It.IsAny<bool>(), It.IsAny<bool>(), It.IsAny<bool>()), Times.Never);
+    }
 }

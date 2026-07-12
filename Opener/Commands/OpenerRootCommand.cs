@@ -86,17 +86,20 @@ public class OpenerRootCommand : RootCommand
         // Implicit handler
         this.SetHandler(async (string keyResult, string[] actArgs, bool returnValue, bool forceCopy, bool searchFlag, bool elevated, bool viewFlag) =>
         {
-            if (string.IsNullOrEmpty(keyResult))
-            {
-                _console.MarkupLine("Opener Tool - Use [bold]o --help[/] for details.");
-                return; 
-            }
-            
-            try 
+            try
             {
                 var keys = storageService.GetKeys().Where(x => x != null && !x.Key.StartsWith("__")).ToList();
                 OKey? foundKey = null;
-                if (searchFlag)
+
+                if (string.IsNullOrEmpty(keyResult))
+                {
+                    foundKey = InteractiveKeyPicker.Pick(_console, keys, "Select a key to run");
+                    if (foundKey == null)
+                    {
+                        return;
+                    }
+                }
+                else if (searchFlag)
                 {
                     var matches = keys.Where(k => k != null && (
                         (!string.IsNullOrWhiteSpace(k.Key) && k.Key.Contains(keyResult, StringComparison.OrdinalIgnoreCase)) ||
@@ -110,13 +113,11 @@ public class OpenerRootCommand : RootCommand
                     }
                     else if (matches.Count > 1)
                     {
-                        _console.MarkupLine($"[yellow]Multiple matches found for '{keyResult}':[/]");
-                        int i = 1;
-                        foreach (var m in matches)
+                        foundKey = InteractiveKeyPicker.Pick(_console, matches, $"Multiple matches for '{keyResult}' - pick one");
+                        if (foundKey == null)
                         {
-                            _console.MarkupLine($"{i++}. {m.Key} - {m.Description}");
+                            return;
                         }
-                        return;
                     }
                     else
                     {
