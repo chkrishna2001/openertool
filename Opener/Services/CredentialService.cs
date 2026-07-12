@@ -128,7 +128,10 @@ public class SecretToolCredentialService : ICredentialService
             {
                 return result.StandardOutput.TrimEnd('\r', '\n');
             }
-            return null;
+            // Not found in the keychain doesn't necessarily mean no password exists - if
+            // SetPassword had to fall back to the file store (e.g. no keyring daemon
+            // available), that's where it actually lives. Check there too before giving up.
+            return _fallback.GetPassword();
         }
         catch
         {
@@ -214,9 +217,16 @@ public class MacKeychainCredentialService : ICredentialService
             if (result.ExitCode == 0)
             {
                 var value = result.StandardOutput.TrimEnd('\r', '\n');
-                return string.IsNullOrEmpty(value) ? null : value;
+                if (!string.IsNullOrEmpty(value))
+                {
+                    return value;
+                }
             }
-            return null;
+            // Not found in the keychain doesn't necessarily mean no password exists - if
+            // SetPassword had to fall back to the file store (e.g. keychain access denied
+            // in a headless environment), that's where it actually lives. Check there too
+            // before giving up.
+            return _fallback.GetPassword();
         }
         catch
         {

@@ -38,6 +38,19 @@ fi
 
 # 2. Add some keys
 o add myweb "https://google.com?q={0}" -t WebPath
+
+# Confirm the password is actually retrievable in a fresh process, not just that
+# config.json's static field flipped - `list` requires decrypting the vault, which
+# requires GetPassword() to actually succeed. A credential-store bug (falling back to
+# file storage on SetPassword but never checking that fallback on a later GetPassword)
+# silently broke exactly this: config show still said "portable" while every subsequent
+# command failed to find the password at all.
+list_after_migration=$(o list 2>&1)
+if [[ "$list_after_migration" != *"myweb"* ]]; then
+	echo "Vault unreadable after migrating to portable mode. 'o list' output was:"
+	echo "$list_after_migration"
+	exit 1
+fi
 o add mydata "secret123" -t Data
 o add myjson "{\"id\":1}" -t JsonData
 

@@ -90,6 +90,15 @@ try {
     Invoke-Opener config set-encryption portable --password $pass -y
     $modeCheck = Invoke-Opener config show | Out-String
     if ($modeCheck -notmatch "portable") { throw "set-encryption did not switch to portable mode. Output: $modeCheck" }
+
+    # Also confirm the password is actually retrievable in a fresh process, not just that
+    # config.json's static field flipped - `list` requires decrypting the vault, which
+    # requires GetPassword() to actually succeed. This is what a credential-store bug
+    # (falling back to file storage on SetPassword but never checking that fallback on a
+    # later GetPassword) silently broke: config show still said "portable" while every
+    # subsequent command failed to find the password at all.
+    $listAfterMigration = Invoke-Opener list 2>&1 | Out-String
+    if ($listAfterMigration -notmatch $testKey) { throw "Vault unreadable after migrating to portable mode. Output: $listAfterMigration" }
     Write-Host "Success: Migrated to portable."
 
     # 6. Test Key Execution

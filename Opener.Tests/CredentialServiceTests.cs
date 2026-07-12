@@ -101,6 +101,29 @@ public class CredentialServiceTests
         fallback.Verify(f => f.SetPassword("abc"), Times.Once);
     }
 
+    [Fact]
+    public void SecretTool_LookupCleanlyReportsNotFound_FallsBackToFile()
+    {
+        // Reproduces a real bug found via a CI failure: if SetPassword had to fall back to
+        // the file store (e.g. no keyring daemon in a headless environment), the password
+        // lives there, not in the keychain. A later GetPassword() call's "lookup" exiting
+        // non-zero because there's genuinely nothing under that service/account (not an
+        // exception - a normal "not found" outcome) must still check the fallback before
+        // giving up, or the password becomes permanently unretrievable.
+        var runner = new Mock<IProcessRunner>();
+        runner.Setup(r => r.CommandExists("secret-tool")).Returns(true);
+        runner.Setup(r => r.Run("secret-tool", It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()))
+            .Returns(new ProcessRunResult(1, "", "No such secret"));
+
+        var fallback = new Mock<ICredentialService>();
+        fallback.Setup(f => f.GetPassword()).Returns("password-from-file-fallback");
+        var service = new SecretToolCredentialService(runner.Object, fallback.Object);
+
+        var result = service.GetPassword();
+
+        Assert.Equal("password-from-file-fallback", result);
+    }
+
     // ---------- MacKeychainCredentialService (macOS / security) ----------
 
     [Fact]
@@ -138,6 +161,29 @@ public class CredentialServiceTests
         service.SetPassword("my-password");
 
         fallback.Verify(f => f.SetPassword(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public void MacKeychain_LookupCleanlyReportsNotFound_FallsBackToFile()
+    {
+        // Same bug as the secret-tool case above, reproduced for the macOS keychain path -
+        // this is the exact scenario that broke a real CI run (SetPassword fell back to the
+        // file store because `security add-generic-password` failed in the CI environment,
+        // but a later GetPassword()'s `find-generic-password` reporting "not found" - a
+        // clean, non-exceptional outcome - returned null instead of checking the file where
+        // the password actually was, making the vault password unrecoverable in that process).
+        var runner = new Mock<IProcessRunner>();
+        runner.Setup(r => r.CommandExists("security")).Returns(true);
+        runner.Setup(r => r.Run("security", It.IsAny<string[]>(), It.IsAny<string?>(), It.IsAny<TimeSpan?>()))
+            .Returns(new ProcessRunResult(44, "", "The specified item could not be found in the keychain."));
+
+        var fallback = new Mock<ICredentialService>();
+        fallback.Setup(f => f.GetPassword()).Returns("password-from-file-fallback");
+        var service = new MacKeychainCredentialService(runner.Object, fallback.Object);
+
+        var result = service.GetPassword();
+
+        Assert.Equal("password-from-file-fallback", result);
     }
 
     [Fact]
