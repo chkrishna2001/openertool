@@ -59,6 +59,8 @@ Once installed, use the shorthand command `o` to access the tool.
   - `Data`: Securely copies secrets/text to your clipboard.
   - `JsonData`: Pretty-prints JSON and copies it to your clipboard.
   - `Rest`: Executes defined REST API calls directly from the terminal, including multi-step chains that pass a token from one call into the next.
+  - `EmailTemplate`: Sends templated emails via your system mail client, SMTP, or Microsoft Graph.
+  - `CalendarEvent`: Creates calendar invites, including relative start times like "tomorrow 10am".
   - `Totp`: Generates live 6-digit 2FA codes, compatible with Google Authenticator/Authy.
 
 ## 📖 Usage
@@ -83,6 +85,7 @@ o
 # `-c/--copy`: force copy the resolved value to clipboard instead of performing the default action
 # `-s/--search`: treat the key as a search term and look up by substring (case-insensitive)
 # `-v/--view`: view the raw details and stored value of the key instead of executing it
+# `-e/--elevated`: run a LocalPath key elevated (admin/sudo) even if it wasn't stored that way
 
 # Examples:
 o githubtoken -r    # print token to stdout
@@ -99,6 +102,7 @@ o view mykey
 
 # Open interactive HTML documentation and schema builder
 o docs
+o docs -o docs.html    # write it to a file instead of opening a browser
 ```
 
 ### Key Types & Examples
@@ -146,6 +150,15 @@ o db-prod
 # Output: Data copied to clipboard!
 ```
 
+#### 3. Structured Secrets (`JsonData`)
+Like `Data`, but for JSON — pretty-prints it in the terminal in addition to copying it to your clipboard.
+
+```bash
+o add api-response "{\"id\":1,\"name\":\"test\"}" -t JsonData
+o api-response
+# Pretty-prints the JSON and copies the raw string to your clipboard.
+```
+
 #### 4. Local Scripts & Folders (`LocalPath`)
 Launch local tools or scripts. Supports absolute paths.
 
@@ -182,7 +195,30 @@ o add authed-api '{
 o authed-api 123
 ```
 
-#### 6. Two-Factor Codes (`Totp`)
+#### 6. Email Templates (`EmailTemplate`)
+Send templated emails from the terminal via your system mail client, SMTP, or Microsoft Graph. Value must be a valid JSON object with **camelCase** field names (`to`, `cc`, `bcc`, `subject`, `body`, `attachmentPath`, `provider`).
+
+```bash
+o add alert '{"to":"oncall@company.com","subject":"Alert: <level>","body":"Details: <details>","provider":"system"}' -t EmailTemplate
+o alert level=P1 details="disk full"
+```
+
+Providers:
+- `system` (default): opens your default mail client via the `mailto:` protocol.
+- `smtp`: sends via a custom SMTP server — set up with `o config set-provider smtp --server <host> --port <port> --username <user> --password <pass> [--ssl]`.
+- `graph`: sends directly via Microsoft Graph API — requires `o config auth-graph` (device-code login) or `o config set-provider graph --tenant-id <id> --client-id <id> --client-secret <secret>` first.
+
+#### 7. Calendar Events (`CalendarEvent`)
+Create calendar invites or schedule meetings. Value must be a valid JSON object with **camelCase** field names (`subject`, `body`, `invitees`, `durationMinutes`, `availability`, `provider`, `startTime`).
+
+```bash
+o add sync-meeting '{"subject":"Sync Meeting","body":"Roadmap discussion","invitees":"a@company.com,b@company.com","durationMinutes":30,"provider":"system","startTime":"tomorrow 10:00"}' -t CalendarEvent
+o sync-meeting
+```
+
+`startTime` accepts relative inputs like `"tomorrow 10am"`, `"today 3pm"`, `"next monday 10:30"`, resolved at execution time. The `system` provider generates a local `.ics` file and opens it in your default calendar app; `graph` creates the event directly in Microsoft 365/Exchange (same `auth-graph`/`set-provider graph` setup as `EmailTemplate` above).
+
+#### 8. Two-Factor Codes (`Totp`)
 Store a 2FA seed and generate the live 6-digit code, using the same algorithm (RFC 6238)
 as Google Authenticator/Authy — no separate app needed. Accepts either the raw base32
 secret or a full `otpauth://` URI (the secret is extracted automatically).
@@ -275,7 +311,34 @@ o config show
 o config clear-password
 ```
 
+### Global URL Aliases & Default Parameters
+
+These apply to every key's named placeholders (`<env>`, `<region>`, ...), so you don't have to set `--url-aliases`/`--default-params` on each key individually.
+
+```bash
+# Set the alias map for one placeholder - this REPLACES that placeholder's whole map,
+# it doesn't merge into it. Resupply every pair you want to keep.
+o config set-url-aliases env d=-dev u=-uat p=
+
+# Set one default value - this only touches that one placeholder, others are untouched
+o config set-default-params user kchirravuri
+
+# Remove one placeholder's aliases / one default value
+o config clear-url-alias env
+o config clear-default-param user
+
+# Remove everything (asks for confirmation)
+o config clear-url-aliases
+o config clear-default-params
+
+# Bulk edit: `config show` prints these as JSON - copy it out, edit it, and load it back.
+# This replaces the whole map in one shot, avoiding the per-placeholder replace behavior above.
+o config set-url-aliases --file aliases.json
+o config set-default-params --file defaults.json
+```
+
 - **Automation Friendly**: Supports `--password` flags for `config`, `export`, and `import`, and `-y/--yes` to skip confirmation prompts (e.g. `o config set-encryption portable --password ... -y`), to integrate into scripts and CI/CD pipelines.
+- `o config auth-graph [--client-id <id>]` — override the default Azure AD app registration used for the Microsoft Graph device-code login, if you're using your own.
 
 ## 🛡️ Data Safety & Backup
 
