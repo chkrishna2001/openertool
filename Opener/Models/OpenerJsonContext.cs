@@ -9,7 +9,7 @@ namespace Opener.Models;
 [JsonSerializable(typeof(Dictionary<string, string>))]
 [JsonSerializable(typeof(EmailTemplateData))]
 [JsonSerializable(typeof(CalendarEventData))]
-[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true)]
 public partial class OpenerJsonContext : JsonSerializerContext
 {
 }

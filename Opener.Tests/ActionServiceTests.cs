@@ -28,6 +28,58 @@ public class ActionServiceTests
     }
 
     [Fact]
+    public async Task HandleEmailTemplate_PascalCaseJson_StillBinds()
+    {
+        // Both README.md and the generated docs document PascalCase field names
+        // ("To", "Subject", "Provider") for this schema. Before OpenerJsonContext was
+        // made case-insensitive, that JSON silently failed to bind - fields stayed at
+        // their defaults (e.g. Provider stayed "system" even when "Provider":"smtp" was
+        // set), routing to the wrong provider without any error. Verified live against
+        // the real binary before this fix: PascalCase "Provider":"smtp" opened the
+        // system mailto client instead of attempting SMTP.
+        var emailServiceMock = new Mock<IEmailService>();
+        var configServiceMock = new Mock<IConfigService>();
+        configServiceMock.Setup(c => c.GetConfig()).Returns(new OpenerConfig());
+
+        var service = new ActionService(configService: configServiceMock.Object, emailService: emailServiceMock.Object);
+        var key = new OKey
+        {
+            Key = "test-email",
+            KeyType = OKeyType.EmailTemplate,
+            Value = "{\"To\":\"a@b.com\",\"Subject\":\"Hi\",\"Body\":\"test\",\"Provider\":\"smtp\"}"
+        };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        emailServiceMock.Verify(e => e.SendEmailAsync(It.Is<EmailTemplateData>(t =>
+            t.To == "a@b.com" && t.Subject == "Hi" && t.Body == "test" && t.Provider == "smtp"
+        )), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleCalendarEvent_PascalCaseJson_StillBinds()
+    {
+        var calendarServiceMock = new Mock<ICalendarService>();
+        var configServiceMock = new Mock<IConfigService>();
+        configServiceMock.Setup(c => c.GetConfig()).Returns(new OpenerConfig());
+
+        var service = new ActionService(configService: configServiceMock.Object, calendarService: calendarServiceMock.Object);
+        var key = new OKey
+        {
+            Key = "test-event",
+            KeyType = OKeyType.CalendarEvent,
+            Value = "{\"Subject\":\"Sync\",\"Body\":\"Roadmap\",\"Invitees\":\"a@b.com\",\"DurationMinutes\":30,\"Provider\":\"graph\",\"StartTime\":\"tomorrow 10:00\"}"
+        };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        calendarServiceMock.Verify(c => c.CreateEventAsync(It.Is<CalendarEventData>(e =>
+            e.Subject == "Sync" && e.Body == "Roadmap" && e.Invitees == "a@b.com" &&
+            e.DurationMinutes == 30 && e.Provider == "graph"
+        )), Times.Once);
+    }
+
+    [Fact]
     public async Task HandleEmailTemplate_ResolvesAttachmentPath()
     {
         var emailServiceMock = new Mock<IEmailService>();

@@ -17,5 +17,5 @@ public class OpenerConfig
 }
 
 [JsonSerializable(typeof(OpenerConfig))]
-[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase)]
+[JsonSourceGenerationOptions(WriteIndented = true, PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true)]
 public partial class ConfigJsonContext : JsonSerializerContext { }
