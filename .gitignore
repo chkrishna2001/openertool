@@ -386,6 +386,9 @@ FodyWeavers.xsd
 .dev-opener/
 .release-opener/
 
+# Opener data/backup files (e.g. opener.dat, opener_backup_*.dat) should never be committed
+*.dat
+
 # Opener test sandbox
 .sandbox-opener/
 .tools-test/
