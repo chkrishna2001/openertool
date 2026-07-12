@@ -47,7 +47,8 @@ class Program
         var graphAuthService = new GraphAuthService(storageService);
         var emailService = new EmailService(storageService, graphAuthService);
         var calendarService = new CalendarService(storageService, graphAuthService);
-        var actionService = new ActionService(configService, storageService, emailService, calendarService);
+        IHttpRequestSender httpRequestSender = new SystemHttpRequestSender();
+        var actionService = new ActionService(configService, storageService, emailService, calendarService, httpRequestSender);
         IGitSyncService gitSyncService = new GitSyncService(configService);
 
         // 1.5 Auto-initialize storage

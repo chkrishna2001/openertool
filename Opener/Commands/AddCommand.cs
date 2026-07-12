@@ -17,6 +17,7 @@ public class AddCommand : Command
                      "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
                      "  o add api \"https://nvidia<env>.domain.com/<region>/<user>\" -t WebPath\n" +
                      "  o add github JBSWY3DPEHPK3PXP -t Totp   # base32 secret, or paste a full otpauth:// URI\n" +
+                     "  o add api '{ \"steps\": [ { \"url\": \"...\", \"extract\": { \"token\": \"access_token\" } }, { \"url\": \"...\", \"headers\": { \"Authorization\": \"Bearer {{token}}\" } } ] }' -t Rest\n" +
                      "  o config set-url-aliases env d=-dev u=-uat p=\n" +
                      "  o config set-default-params user kchirravuri")
     {

@@ -1,4 +1,6 @@
+using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Moq;
@@ -90,5 +92,166 @@ public class ActionServiceTests
         Assert.Equal("hi this's test email", data.Body);
         Assert.Equal("tet-attachment-{1}.txt", data.AttachmentPath);
         Assert.Equal("smtp", data.Provider);
+    }
+
+    // ---------- HandleRest (single-step and chained) ----------
+
+    [Fact]
+    public async Task HandleRest_SingleStep_CamelCaseJson_ResolvesUrlAndSendsHeaders()
+    {
+        var senderMock = new Mock<IHttpRequestSender>();
+        HttpRequestMessage? captured = null;
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Callback<HttpRequestMessage>(r => captured = r)
+            .ReturnsAsync(new HttpCallResult(200, true, "{\"ok\":true}"));
+
+        var service = new ActionService(httpRequestSender: senderMock.Object);
+        var key = new OKey
+        {
+            Key = "api",
+            KeyType = OKeyType.Rest,
+            Value = "{\"url\":\"https://api.example.com/users/{0}\",\"method\":\"GET\",\"headers\":{\"User-Agent\":\"Opener-CLI\"}}"
+        };
+
+        await service.ExecuteAsync(key, new[] { "42" });
+
+        Assert.NotNull(captured);
+        Assert.Equal("https://api.example.com/users/42", captured!.RequestUri!.ToString());
+        Assert.Equal(HttpMethod.Get, captured.Method);
+        Assert.True(captured.Headers.TryGetValues("User-Agent", out var values));
+        Assert.Equal("Opener-CLI", values!.First());
+    }
+
+    [Fact]
+    public async Task HandleRest_SingleStep_LegacyPascalCaseJson_StillWorks()
+    {
+        // Before the casing fix, RestData only matched exact PascalCase property names.
+        // Case-insensitive matching must keep that working alongside the now-documented
+        // camelCase shape.
+        var senderMock = new Mock<IHttpRequestSender>();
+        HttpRequestMessage? captured = null;
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Callback<HttpRequestMessage>(r => captured = r)
+            .ReturnsAsync(new HttpCallResult(200, true, "{}"));
+
+        var service = new ActionService(httpRequestSender: senderMock.Object);
+        var key = new OKey
+        {
+            Key = "api",
+            KeyType = OKeyType.Rest,
+            Value = "{\"Url\":\"https://api.example.com/ping\",\"Method\":\"POST\"}"
+        };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        Assert.NotNull(captured);
+        Assert.Equal("https://api.example.com/ping", captured!.RequestUri!.ToString());
+        Assert.Equal(HttpMethod.Post, captured.Method);
+    }
+
+    [Fact]
+    public async Task HandleRest_HeaderContentType_OverridesDefaultBodyMediaType()
+    {
+        var senderMock = new Mock<IHttpRequestSender>();
+        HttpRequestMessage? captured = null;
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Callback<HttpRequestMessage>(r => captured = r)
+            .ReturnsAsync(new HttpCallResult(200, true, "ok"));
+
+        var service = new ActionService(httpRequestSender: senderMock.Object);
+        var key = new OKey
+        {
+            Key = "api",
+            KeyType = OKeyType.Rest,
+            Value = "{\"url\":\"https://api.example.com/submit\",\"method\":\"POST\",\"body\":\"a=1&b=2\",\"headers\":{\"Content-Type\":\"application/x-www-form-urlencoded\"}}"
+        };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        Assert.NotNull(captured?.Content);
+        Assert.Equal("application/x-www-form-urlencoded", captured!.Content!.Headers.ContentType!.MediaType);
+    }
+
+    [Fact]
+    public async Task HandleRest_Chain_ExtractsTokenAndSubstitutesIntoNextStepHeader()
+    {
+        var senderMock = new Mock<IHttpRequestSender>();
+        var capturedRequests = new List<HttpRequestMessage>();
+        var responses = new Queue<HttpCallResult>(new[]
+        {
+            new HttpCallResult(200, true, "{\"access_token\":\"secret-token-123\"}"),
+            new HttpCallResult(200, true, "{\"data\":\"final-result\"}")
+        });
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Returns<HttpRequestMessage>(req =>
+            {
+                capturedRequests.Add(req);
+                return Task.FromResult(responses.Dequeue());
+            });
+
+        var service = new ActionService(httpRequestSender: senderMock.Object);
+        var chainJson = "{\"steps\":[" +
+            "{\"url\":\"https://api.example.com/login\",\"method\":\"POST\",\"extract\":{\"token\":\"access_token\"}}," +
+            "{\"url\":\"https://api.example.com/data\",\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer {{token}}\"}}" +
+            "]}";
+        var key = new OKey { Key = "chain", KeyType = OKeyType.Rest, Value = chainJson };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        Assert.Equal(2, capturedRequests.Count);
+        Assert.True(capturedRequests[1].Headers.TryGetValues("Authorization", out var authValues));
+        Assert.Equal("Bearer secret-token-123", authValues!.First());
+    }
+
+    [Fact]
+    public async Task HandleRest_Chain_AbortsWhenNonFinalStepFails()
+    {
+        var senderMock = new Mock<IHttpRequestSender>();
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .ReturnsAsync(new HttpCallResult(401, false, "{\"error\":\"unauthorized\"}"));
+
+        var service = new ActionService(httpRequestSender: senderMock.Object);
+        var chainJson = "{\"steps\":[" +
+            "{\"url\":\"https://api.example.com/login\",\"method\":\"POST\"}," +
+            "{\"url\":\"https://api.example.com/data\",\"method\":\"GET\"}" +
+            "]}";
+        var key = new OKey { Key = "chain", KeyType = OKeyType.Rest, Value = chainJson };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        senderMock.Verify(s => s.SendAsync(It.IsAny<HttpRequestMessage>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task HandleRest_Chain_ExtractionNotFound_LeavesLiteralPlaceholderInNextStep()
+    {
+        // Extraction failures warn but don't abort - the unresolved {{token}} placeholder
+        // should pass through literally to the next step rather than silently vanishing.
+        var senderMock = new Mock<IHttpRequestSender>();
+        var capturedRequests = new List<HttpRequestMessage>();
+        var responses = new Queue<HttpCallResult>(new[]
+        {
+            new HttpCallResult(200, true, "{\"unexpected\":\"shape\"}"),
+            new HttpCallResult(200, true, "{}")
+        });
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Returns<HttpRequestMessage>(req =>
+            {
+                capturedRequests.Add(req);
+                return Task.FromResult(responses.Dequeue());
+            });
+
+        var service = new ActionService(httpRequestSender: senderMock.Object);
+        var chainJson = "{\"steps\":[" +
+            "{\"url\":\"https://api.example.com/login\",\"extract\":{\"token\":\"access_token\"}}," +
+            "{\"url\":\"https://api.example.com/data\",\"headers\":{\"Authorization\":\"Bearer {{token}}\"}}" +
+            "]}";
+        var key = new OKey { Key = "chain", KeyType = OKeyType.Rest, Value = chainJson };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        Assert.Equal(2, capturedRequests.Count);
+        Assert.True(capturedRequests[1].Headers.TryGetValues("Authorization", out var authValues));
+        Assert.Equal("Bearer {{token}}", authValues!.First());
     }
 }

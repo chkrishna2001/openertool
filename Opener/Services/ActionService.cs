@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
@@ -19,9 +21,30 @@ public class RestData
     public string Url { get; set; } = string.Empty;
     public string Method { get; set; } = "GET";
     public string Body { get; set; } = string.Empty;
+    public Dictionary<string, string>? Headers { get; set; }
+
+    /// <summary>
+    /// Values to capture from this step's JSON response, as varName -&gt; simple path
+    /// (dot-separated, with optional [index] array access, e.g. "data.token" or
+    /// "items[0].id"). Captured values are available to later steps in a chain as
+    /// {{varName}} in their Url, Headers values, or Body.
+    /// </summary>
+    public Dictionary<string, string>? Extract { get; set; }
+}
+
+/// <summary>
+/// A Rest key's Value can be this shape instead of a single RestData - a login-then-call
+/// flow where each step can extract values from its response for later steps to use.
+/// </summary>
+public class RestChainData
+{
+    public List<RestData>? Steps { get; set; }
 }
 
 [JsonSerializable(typeof(RestData))]
+[JsonSerializable(typeof(RestChainData))]
+[JsonSerializable(typeof(Dictionary<string, string>))]
+[JsonSourceGenerationOptions(PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true)]
 public partial class RestDataContext : JsonSerializerContext { }
 
 public interface IActionService
@@ -35,17 +58,20 @@ public class ActionService : IActionService
     private readonly IStorageService? _storageService;
     private readonly IEmailService? _emailService;
     private readonly ICalendarService? _calendarService;
+    private readonly IHttpRequestSender _httpRequestSender;
 
     public ActionService(
         IConfigService? configService = null,
         IStorageService? storageService = null,
         IEmailService? emailService = null,
-        ICalendarService? calendarService = null)
+        ICalendarService? calendarService = null,
+        IHttpRequestSender? httpRequestSender = null)
     {
         _configService = configService;
         _storageService = storageService;
         _emailService = emailService;
         _calendarService = calendarService;
+        _httpRequestSender = httpRequestSender ?? new SystemHttpRequestSender();
     }
 
     public async Task ExecuteAsync(OKey key, string[] args, bool returnValue = false, bool forceCopy = false, bool elevated = false)
@@ -257,46 +283,134 @@ public class ActionService : IActionService
         try
         {
             var json = CommandHelpers.NormalizeJson(key.Value);
-            var restData = JsonSerializer.Deserialize(json, RestDataContext.Default.RestData);
-            if(restData == null) return;
+            var steps = ParseRestSteps(json);
+            if (steps == null || steps.Count == 0)
+            {
+                return;
+            }
 
             var conf = _configService?.GetConfig();
-            var resolved = UrlTemplateResolver.Resolve(
-                restData.Url,
-                args,
-                conf?.GlobalUrlAliases,
-                conf?.GlobalDefaultParams,
-                key.UrlAliases,
-                key.DefaultParams);
+            var vars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            string lastContent = string.Empty;
 
-            foreach (var warning in resolved.Warnings)
+            for (int i = 0; i < steps.Count; i++)
             {
-                AnsiConsole.MarkupLine($"[yellow]Warning:[/] {warning}");
+                var step = steps[i];
+                var stepLabel = steps.Count > 1 ? $"({i + 1}/{steps.Count}) " : string.Empty;
+
+                var resolved = UrlTemplateResolver.Resolve(
+                    SubstituteVars(step.Url, vars),
+                    args,
+                    conf?.GlobalUrlAliases,
+                    conf?.GlobalDefaultParams,
+                    key.UrlAliases,
+                    key.DefaultParams);
+
+                foreach (var warning in resolved.Warnings)
+                {
+                    AnsiConsole.MarkupLine($"[yellow]Warning:[/] {warning}");
+                }
+
+                var url = resolved.Value;
+                var method = string.IsNullOrWhiteSpace(step.Method) ? "GET" : step.Method;
+                AnsiConsole.MarkupLine($"{stepLabel}[blue]{method}[/] {url}");
+
+                var request = new HttpRequestMessage(new HttpMethod(method), url);
+
+                string? contentType = null;
+                if (step.Headers != null)
+                {
+                    foreach (var (headerName, headerValue) in step.Headers)
+                    {
+                        var resolvedHeaderValue = SubstituteVars(headerValue, vars);
+                        if (headerName.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
+                        {
+                            contentType = resolvedHeaderValue;
+                        }
+                        else
+                        {
+                            request.Headers.TryAddWithoutValidation(headerName, resolvedHeaderValue);
+                        }
+                    }
+                }
+
+                if (!string.IsNullOrEmpty(step.Body))
+                {
+                    request.Content = new StringContent(SubstituteVars(step.Body, vars), Encoding.UTF8, contentType ?? "application/json");
+                }
+
+                var result = await _httpRequestSender.SendAsync(request);
+                lastContent = result.Body;
+
+                AnsiConsole.MarkupLine($"{stepLabel}Status: {result.StatusCode}");
+
+                bool isLastStep = i == steps.Count - 1;
+                if (!result.IsSuccess && !isLastStep)
+                {
+                    AnsiConsole.MarkupLine($"[red]Chain aborted:[/] step {i + 1} failed with status {result.StatusCode}.");
+                    return;
+                }
+
+                if (step.Extract != null)
+                {
+                    foreach (var (varName, path) in step.Extract)
+                    {
+                        var value = JsonPathExtractor.Extract(result.Body, path);
+                        if (value == null)
+                        {
+                            AnsiConsole.MarkupLine($"[yellow]Warning:[/] Could not extract '{varName}' using path '{path}' from step {i + 1}'s response.");
+                        }
+                        else
+                        {
+                            vars[varName] = value;
+                        }
+                    }
+                }
             }
 
-            var url = resolved.Value;
-
-            AnsiConsole.MarkupLine($"[blue]{restData.Method}[/] {url}");
-
-            using var client = new HttpClient();
-            var request = new HttpRequestMessage(new HttpMethod(restData.Method), url);
-            
-            if(!string.IsNullOrEmpty(restData.Body))
-            {
-                request.Content = new StringContent(restData.Body, System.Text.Encoding.UTF8, "application/json");
-            }
-
-            var response = await client.SendAsync(request);
-            var content = await response.Content.ReadAsStringAsync();
-
-            AnsiConsole.MarkupLine($"Status: {response.StatusCode}");
-            try { AnsiConsole.Write(new JsonText(content)); }
-            catch { AnsiConsole.WriteLine(content); }
+            try { AnsiConsole.Write(new JsonText(lastContent)); }
+            catch { AnsiConsole.WriteLine(lastContent); }
         }
         catch(Exception ex)
         {
             AnsiConsole.MarkupLine($"[red]Rest Error:[/] {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// A Rest key's Value is either a single request (unchanged shape) or a { "steps": [...] }
+    /// chain - detected by peeking for a top-level "steps" array so both shapes can share one
+    /// execution path.
+    /// </summary>
+    private static List<RestData>? ParseRestSteps(string json)
+    {
+        using var probe = JsonDocument.Parse(json);
+        bool isChain = probe.RootElement.ValueKind == JsonValueKind.Object &&
+            probe.RootElement.TryGetProperty("steps", out var stepsElement) &&
+            stepsElement.ValueKind == JsonValueKind.Array;
+
+        if (isChain)
+        {
+            var chain = JsonSerializer.Deserialize(json, RestDataContext.Default.RestChainData);
+            return chain?.Steps;
+        }
+
+        var single = JsonSerializer.Deserialize(json, RestDataContext.Default.RestData);
+        return single == null ? null : new List<RestData> { single };
+    }
+
+    private static string SubstituteVars(string? input, Dictionary<string, string> vars)
+    {
+        if (string.IsNullOrEmpty(input) || vars.Count == 0)
+        {
+            return input ?? string.Empty;
+        }
+
+        foreach (var (name, value) in vars)
+        {
+            input = input.Replace("{{" + name + "}}", value);
+        }
+        return input;
     }
 
     private async Task HandleEmailTemplate(OKey key, string[] args, bool returnValue = false, bool forceCopy = false)
