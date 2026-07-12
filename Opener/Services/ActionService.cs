@@ -73,6 +73,9 @@ public class ActionService : IActionService
             case OKeyType.CalendarEvent:
                 await HandleCalendarEvent(key, args, returnValue, forceCopy);
                 break;
+            case OKeyType.Totp:
+                HandleTotp(key, returnValue, forceCopy);
+                break;
             default:
                 AnsiConsole.MarkupLine("[red]Unknown key type.[/]");
                 break;
@@ -202,6 +205,30 @@ public class ActionService : IActionService
         }
 
         TryCopyToClipboard(key.Value, "Data");
+    }
+
+    private void HandleTotp(OKey key, bool returnValue = false, bool forceCopy = false)
+    {
+        string code;
+        try
+        {
+            code = TotpService.GenerateCode(key.Value);
+        }
+        catch (Exception ex)
+        {
+            AnsiConsole.MarkupLine($"[red]TOTP Error:[/] {ex.Message}");
+            return;
+        }
+
+        if (returnValue)
+        {
+            Console.WriteLine(code);
+            return;
+        }
+
+        var validFor = (int)TotpService.TimeRemaining().TotalSeconds;
+        TryCopyToClipboard(code, "TOTP code");
+        AnsiConsole.MarkupLine($"[dim]Valid for ~{validFor}s[/]");
     }
 
     private static void TryCopyToClipboard(string text, string label)

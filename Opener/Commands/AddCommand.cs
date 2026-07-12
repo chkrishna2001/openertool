@@ -16,14 +16,15 @@ public class AddCommand : Command
                      "  o add token \"secret-value\" -t Data\n" +
                      "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
                      "  o add api \"https://nvidia<env>.domain.com/<region>/<user>\" -t WebPath\n" +
+                     "  o add github JBSWY3DPEHPK3PXP -t Totp   # base32 secret, or paste a full otpauth:// URI\n" +
                      "  o config set-url-aliases env d=-dev u=-uat p=\n" +
                      "  o config set-default-params user kchirravuri")
     {
         var _console = console ?? AnsiConsole.Console;
 
         var keyArg = new Argument<string>("key", "Unique key name, for example jira or api.");
-        var valArg = new Argument<string>("value", "Stored value. Meaning depends on --type: URL template, local path, data, JSON, or REST JSON.");
-        var typeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Key type: WebPath, LocalPath, Data, JsonData, or Rest.");
+        var valArg = new Argument<string>("value", "Stored value. Meaning depends on --type: URL template, local path, data, JSON, REST JSON, or a TOTP base32 secret / otpauth:// URI.");
+        var typeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Key type: WebPath, LocalPath, Data, JsonData, Rest, EmailTemplate, CalendarEvent, or Totp.");
         var urlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "Per-key alias map JSON. " + CommandHelpers.UrlAliasJsonHelp);
         var defaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "Per-key default params JSON. " + CommandHelpers.DefaultParamsJsonHelp);
         var elevatedOpt = new Option<bool>(new[] { "-e", "--elevated" }, "Execute the key in elevated mode (admin/sudo)");
@@ -48,6 +49,19 @@ public class AddCommand : Command
             if (t == OKeyType.JsonData || t == OKeyType.Rest || t == OKeyType.EmailTemplate || t == OKeyType.CalendarEvent)
             {
                 resolvedValue = CommandHelpers.ResolveJsonInput(v);
+            }
+            else if (t == OKeyType.Totp)
+            {
+                resolvedValue = TotpService.ExtractSecret(v ?? string.Empty);
+                try
+                {
+                    TotpService.GenerateCode(resolvedValue);
+                }
+                catch (Exception ex)
+                {
+                    _console.MarkupLine($"[red]Invalid TOTP secret:[/] {ex.Message}");
+                    return;
+                }
             }
 
             var newKey = new OKey { Key = k ?? string.Empty, Value = resolvedValue, KeyType = t, Elevated = elevated };

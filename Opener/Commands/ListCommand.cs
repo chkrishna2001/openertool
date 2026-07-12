@@ -44,7 +44,7 @@ public class ListCommand : Command
             foreach (var key in filtered.OrderBy(x => x.Key))
             {
                 string valPreview = (key.Value ?? string.Empty).Length > 50 ? key.Value!.Substring(0, 47) + "..." : (key.Value ?? string.Empty);
-                if (key.KeyType == OKeyType.Data || key.KeyType == OKeyType.JsonData) valPreview = "********";
+                if (key.KeyType == OKeyType.Data || key.KeyType == OKeyType.JsonData || key.KeyType == OKeyType.Totp) valPreview = "********";
                 table.AddRow(key.Key ?? "N/A", key.KeyType.ToString(), key.Elevated ? "[red]Yes[/]" : "No", Markup.Escape(valPreview));
             }
             _console.Write(table);

@@ -44,6 +44,20 @@ public class UpdateCommand : Command
             {
                 existing.Value = CommandHelpers.ResolveJsonInput(v);
             }
+            else if (existing.KeyType == OKeyType.Totp)
+            {
+                var extracted = TotpService.ExtractSecret(v ?? string.Empty);
+                try
+                {
+                    TotpService.GenerateCode(extracted);
+                }
+                catch (Exception ex)
+                {
+                    _console.MarkupLine($"[red]Invalid TOTP secret:[/] {ex.Message}");
+                    return;
+                }
+                existing.Value = extracted;
+            }
             else
             {
                 existing.Value = v ?? string.Empty;
