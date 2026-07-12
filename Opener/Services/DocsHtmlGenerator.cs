@@ -532,6 +532,13 @@ public static class DocsHtmlGenerator
                 <li><a href="#rest" class="nav-link">REST API (Rest)</a></li>
                 <li><a href="#email" class="nav-link">Email Templates</a></li>
                 <li><a href="#calendar" class="nav-link">Calendar Events</a></li>
+                <li><a href="#totp" class="nav-link">Two-Factor Codes (Totp)</a></li>
+            </ul>
+
+            <div class="nav-section-title">Productivity</div>
+            <ul class="nav-links">
+                <li><a href="#picker" class="nav-link">Interactive Picker</a></li>
+                <li><a href="#sync" class="nav-link">Git-Based Vault Sync</a></li>
             </ul>
 
             <div class="nav-section-title">Interactive Tool</div>
@@ -773,6 +780,24 @@ o hosts  # Opens hosts in notepad as administrator</code></pre>
                 <div class="callout-title">Pro Tip</div>
                 <p>Instead of manually typing this JSON, scroll down to our interactive **JSON Key Builder** to generate this structure with form textboxes!</p>
             </div>
+
+            <h3>Chaining requests (login, then call)</h3>
+            <p>Instead of a single request, the value can be a <code>{ "steps": [...] }</code> array. Each step can <code>extract</code> values from its JSON response using a simple dot-separated path (e.g. <code>"data.token"</code> or <code>"items[0].id"</code>), and later steps reference them as <code>{{varName}}</code> in their <code>url</code>, <code>headers</code>, or <code>body</code>. Only the last step's response is printed. If a non-final step fails, the whole chain aborts instead of continuing with bad data.</p>
+            <pre><code>{
+  "steps": [
+    {
+      "url": "https://api.example.com/login",
+      "method": "POST",
+      "body": "{\"user\":\"me\",\"pass\":\"secret\"}",
+      "extract": { "token": "access_token" }
+    },
+    {
+      "url": "https://api.example.com/data/{0}",
+      "method": "GET",
+      "headers": { "Authorization": "Bearer {{token}}" }
+    }
+  ]
+}</code></pre>
         </section>
 
         <!-- EMAIL TEMPLATES -->
@@ -816,6 +841,55 @@ o hosts  # Opens hosts in notepad as administrator</code></pre>
                 <li><strong>Dynamic Start Time</strong>: Supports relative inputs like <code>"tomorrow 10am"</code>, <code>"today 3pm"</code>, <code>"next monday 10:30"</code>, which resolve dynamically at execution time.</li>
                 <li><code>system</code> provider: Generates an `.ics` file locally and opens it in your default system calendar (e.g., Apple Calendar, Outlook).</li>
                 <li><code>graph</code> provider: Creates the event directly in your Microsoft 365 Exchange calendar.</li>
+            </ul>
+        </section>
+
+        <!-- TOTP -->
+        <section id="totp">
+            <h2>Two-Factor Codes (<code>Totp</code>)</h2>
+            <p>Stores a 2FA seed and generates the current 6-digit code using RFC 6238 - the same algorithm Google Authenticator and Authy use, so it's fully compatible without any special "registration" step. The value is just the base32 secret, or a full <code>otpauth://</code> URI (the secret is extracted automatically) - it's encrypted in the same vault as every other key, no separate secret store.</p>
+            <pre><code>o add github JBSWY3DPEHPK3PXP -t Totp
+o github            # copies the current code to your clipboard
+o github -r         # prints the current code instead</code></pre>
+
+            <div class="callout">
+                <div class="callout-title">Something to consider</div>
+                <p>Storing a TOTP seed alongside your other secrets means a compromised vault exposes both a password <em>and</em> its 2FA code together. This is best suited to lower-stakes accounts (internal tools, staging environments) rather than the account tied to the vault's own recovery, like your primary email or GitHub.</p>
+            </div>
+        </section>
+
+        <!-- INTERACTIVE PICKER -->
+        <section id="picker">
+            <h2>Interactive Picker</h2>
+            <p>Running <code>o</code> with no arguments opens a searchable picker over all your stored keys - type to filter, select one, and it runs exactly like typing its name would. If the console isn't interactive (e.g. output is redirected/piped), it falls back to printing a plain list instead of hanging.</p>
+            <pre><code>o   # opens the picker</code></pre>
+            <p>This makes <code>o</code> usable as a quick launcher outside a terminal entirely: on Windows, press <strong>Win+R</strong>, type <code>o</code>, and hit Enter - a console window opens with the picker ready to go.</p>
+        </section>
+
+        <!-- GIT SYNC -->
+        <section id="sync">
+            <h2>Git-Based Vault Sync</h2>
+            <p>Pushes/pulls your already-encrypted vault file through a git remote, instead of relying on a cloud-storage client's local sync agent (OneDrive's Files-On-Demand, for example, breaks direct file I/O - see the cloud sync notes elsewhere in this doc). Git only ever sees ciphertext.</p>
+            <pre><code># One-time setup
+o config set-sync-remote git@github.com:me/opener-vault.git      # SSH: uses your existing SSH keys
+o config set-sync-remote https://github.com/me/opener-vault.git  # HTTPS: needs a token
+
+o config set-sync-token ghp_xxxxxxxxxxxx   # only needed for an https:// remote
+
+# Manual sync
+o sync push
+o sync pull      # backs up your current vault to .backup/ first
+o sync status
+
+# Opt-in: push automatically after add/update/delete/import
+o config enable-auto-sync
+o config disable-auto-sync</code></pre>
+
+            <h3>Notes</h3>
+            <ul>
+                <li>An SSH remote needs no extra setup on Opener's side - it uses your existing SSH agent/keys. An HTTPS remote's token is stored in your OS keychain, in a slot separate from your vault's own unlock password.</li>
+                <li>Auto-sync never fails the command that triggered it - a push failure just prints a warning.</li>
+                <li>A pull conflict (two machines changed the vault before syncing) isn't auto-merged, since merging an opaque encrypted blob is meaningless - it aborts cleanly and tells you to resolve it manually. Your data is safe either way, since a pull always backs up first.</li>
             </ul>
         </section>
 

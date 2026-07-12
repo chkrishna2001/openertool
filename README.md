@@ -51,12 +51,15 @@ Once installed, use the shorthand command `o` to access the tool.
   - **Local Mode (Default)**: Zero-config. Uses DPAPI on Windows or a local machine-key on Linux/macOS.
   - **Portable Mode**: Uses AES-256-GCM with a password. Ideal for syncing via OneDrive/Dropbox or moving between machines.
 - **Rich TUI**: Interactive tables and colored output using [Spectre.Console](https://spectreconsole.net/).
+- **Interactive Picker**: Run `o` with no arguments to open a searchable picker over all your keys — handy from a terminal, and works as a quick launcher from Windows Run (Win+R).
+- **Git-Based Vault Sync**: Push/pull your encrypted vault through a git remote instead of relying on a cloud-storage client.
 - **Actionable Keys**: Not just storage — Opener acts on your data:
   - `WebPath`: Opens URLs in your default browser (supports dynamic placeholders).
   - `LocalPath`: Executes files, scripts, or opens folders.
   - `Data`: Securely copies secrets/text to your clipboard.
   - `JsonData`: Pretty-prints JSON and copies it to your clipboard.
-  - `Rest`: Executes defined REST API calls directly from the terminal.
+  - `Rest`: Executes defined REST API calls directly from the terminal, including multi-step chains that pass a token from one call into the next.
+  - `Totp`: Generates live 6-digit 2FA codes, compatible with Google Authenticator/Authy.
 
 ## 📖 Usage
 
@@ -68,6 +71,12 @@ o add <key> <value> -t <type>
 
 # Execute/Use a key
 o <key> [args]
+
+# Run with no key to open an interactive, searchable picker over all your keys -
+# selecting one runs it exactly like typing its name would. Falls back to a plain
+# list if the console isn't interactive (e.g. piped output), so it never hangs.
+# Handy launched from Windows Run (Win+R): type "o" and hit Enter.
+o
 
 # New execution flags
 # `-r/--return`: write the resolved value to stdout instead of performing the default action (copy/open)
@@ -144,9 +153,87 @@ Launch local tools or scripts. Supports absolute paths.
 Store and execute API requests. Value must be a JSON object.
 
 ```bash
-o add get-user "{ \"url\": \"https://api.github.com/users/{0}\", \"method\": \"GET\" }" -t Rest
+o add get-user "{ \"url\": \"https://api.github.com/users/{0}\", \"method\": \"GET\", \"headers\": { \"User-Agent\": \"Opener-CLI\" } }" -t Rest
 o get-user chkri
 ```
+
+**Chaining requests (login, then call):** instead of a single request, the value can be
+`{ "steps": [...] }` — each step can `extract` values from its JSON response (dot-separated
+path, e.g. `"data.token"` or `"items[0].id"`), and later steps reference them as `{{varName}}`
+in their `url`, `headers`, or `body`. If a non-final step fails, the chain aborts instead of
+continuing with bad data.
+
+```bash
+o add authed-api '{
+  "steps": [
+    {
+      "url": "https://api.example.com/login",
+      "method": "POST",
+      "body": "{\"user\":\"me\",\"pass\":\"secret\"}",
+      "extract": { "token": "access_token" }
+    },
+    {
+      "url": "https://api.example.com/data/{0}",
+      "method": "GET",
+      "headers": { "Authorization": "Bearer {{token}}" }
+    }
+  ]
+}' -t Rest
+o authed-api 123
+```
+
+#### 6. Two-Factor Codes (`Totp`)
+Store a 2FA seed and generate the live 6-digit code, using the same algorithm (RFC 6238)
+as Google Authenticator/Authy — no separate app needed. Accepts either the raw base32
+secret or a full `otpauth://` URI (the secret is extracted automatically).
+
+```bash
+o add github JBSWY3DPEHPK3PXP -t Totp
+o github            # copies the current code to your clipboard
+o github -r         # prints the current code instead
+```
+
+Because a compromised vault would then expose both a password *and* its 2FA code together,
+this is best suited to lower-stakes accounts (internal tools, staging) rather than the
+account tied to the vault's own recovery (e.g. your primary email or GitHub).
+
+## 🔄 Git-Based Vault Sync
+
+Push/pull your already-encrypted vault file through a git remote, instead of relying on a
+cloud-storage client's local sync agent (see the OneDrive note below for why that can be
+unreliable). Git only ever sees ciphertext.
+
+```bash
+# One-time setup
+o config set-sync-remote git@github.com:me/opener-vault.git   # SSH: uses your existing SSH keys
+o config set-sync-remote https://github.com/me/opener-vault.git  # HTTPS: needs a token, see below
+
+# Manual sync
+o sync push
+o sync pull      # backs up your current vault to .backup/ first
+o sync status
+```
+
+**SSH vs. HTTPS:** an SSH remote needs no extra setup — it uses your existing SSH agent/keys,
+and Opener never stores anything for it. For an HTTPS remote, store a personal access token
+(kept in your OS keychain, in a slot separate from your vault's own unlock password):
+
+```bash
+o config set-sync-token ghp_xxxxxxxxxxxx
+```
+
+**Auto-sync (opt-in):** once a remote is set, you can have every `add`/`update`/`delete`/
+`import` push automatically in the background:
+
+```bash
+o config enable-auto-sync
+o config disable-auto-sync
+```
+
+Auto-sync never fails the command that triggered it — a push failure just prints a warning.
+A pull conflict (two machines changed the vault before syncing) isn't auto-merged, since
+merging an opaque encrypted blob is meaningless — it aborts cleanly and tells you to resolve
+it manually (your data is safe either way, since a pull always backs up first).
 
 ## ☁️ Portable Mode & Cloud Sync
 
@@ -201,7 +288,7 @@ o config show
 o config clear-password
 ```
 
-- **Automation Friendly**: Supports `--password` flags for `config`, `export`, and `import` to integrate into scripts and CI/CD pipelines.
+- **Automation Friendly**: Supports `--password` flags for `config`, `export`, and `import`, and `-y/--yes` to skip confirmation prompts (e.g. `o config set-encryption portable --password ... -y`), to integrate into scripts and CI/CD pipelines.
 
 ## 🛡️ Data Safety & Backup
 
@@ -211,7 +298,7 @@ Opener includes several safeguards to prevent accidental data loss:
 Destructive operations now ask for confirmation:
 - `o delete <key>` — requires confirmation before deleting (use `-y/--yes` to skip)
 - `o config clear-url-aliases` — requires confirmation before clearing all aliases
-- `o config set-encryption <mode>` — requires confirmation before re-encrypting (auto-creates backup first)
+- `o config set-encryption <mode>` — requires confirmation before re-encrypting (auto-creates backup first, use `-y/--yes` to skip)
 
 ### Automatic Backups
 - **Before migration**: When you switch encryption modes, an automatic backup is created in `.backup/` folder
