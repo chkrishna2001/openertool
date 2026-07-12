@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-07-12
+
+### Added
+- Interactive picker (`o` with no arguments) — a searchable selection prompt over all stored keys, falling back to a static list on non-interactive consoles. Also usable as a quick launcher from Windows Run (Win+R).
+- Two-factor code generation (`Totp` key type) — stores a base32 seed or `otpauth://` URI and computes the live RFC 6238 code, compatible with Google Authenticator/Authy.
+- Git-based encrypted vault sync: `o sync push/pull/status`, plus `o config set-sync-remote`, `set-sync-token`, `enable-auto-sync`, and `disable-auto-sync`. Pushes/pulls the already-encrypted vault through a git remote instead of a cloud-storage client. SSH remotes use the existing SSH agent; HTTPS remotes use a token stored in a separate OS-keychain slot from the vault's own unlock password. Auto-sync (opt-in) fires a background push after `add`/`update`/`delete`/`import` without failing the triggering command.
+- REST request chaining — a `Rest` key's value can be `{ "steps": [...] }`, where each step can `extract` values from its JSON response (dot-path, e.g. `"data.token"` or `"items[0].id"`) for later steps to reference as `{{varName}}` in their `url`, `headers`, or `body`. Enables login-then-call flows (authenticate, capture a token, use it in the next request). A non-final step failing aborts the chain.
+- `Headers` support for `Rest` keys (previously documented but never actually implemented).
+- `-y`/`--yes` flag on `o config set-encryption` to skip the confirmation prompt, for scripting.
+- MIT `LICENSE`.
+
+### Changed
+- Portable-mode credential storage on Linux/macOS now uses the real OS keychain (`secret-tool`/libsecret on Linux, Keychain via `security` on macOS) when available, falling back to an encrypted file (previously plaintext) otherwise.
+- `RestData`, `EmailTemplateData`, and `CalendarEventData` JSON parsing is now case-insensitive and camelCase, matching the documented examples for all three (see Fixed).
+- README and the generated `o docs` page substantially expanded: interactive picker, TOTP, git sync, and REST chaining sections added; `EmailTemplate`/`CalendarEvent` (previously undocumented despite being fully implemented) and the `config set-url-aliases`/`set-default-params`/`clear-*` editing commands are now documented; the Commands Reference table now lists all real commands instead of a small subset.
+- Removed documentation and runtime-message references to a `cloud` command that never existed in the code; replaced with accurate guidance pointing at git-based sync and local storage.
+
+### Fixed
+- `EmailTemplate`/`CalendarEvent` keys added using the documented JSON schema silently failed to bind any fields (e.g. `"Provider":"smtp"` was ignored, routing to the wrong provider with no error) due to a case-sensitivity mismatch between the documented PascalCase examples and the deserializer's camelCase-only matching.
+- `Rest` keys had the same case-sensitivity bug — the documented lowercase JSON shape (`"url"`, `"method"`) never actually parsed.
+- `tests/integration_test.sh` was broken by the credential-storage change above (it seeded a now-encrypted credential file with plaintext); both integration test scripts now drive setup through the actual CLI and cover today's new features.
+- `SystemProcessRunner.CommandExists` used `which`, which isn't available on plain Windows; it now uses `where` there.
+
+### Security
+- Removed a committed encrypted backup file (`backup.dat`) from the repository and added `*.dat` to `.gitignore`.
+- Portable-mode credential fallback file is now encrypted (AES-256-GCM, machine-derived key) instead of plaintext.
+
 ## [1.0.10] - 2026-07-11
 
 ### Added
