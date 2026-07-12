@@ -12,17 +12,20 @@ public class SetEncryptionCommand : Command
         : base("set-encryption", "Switch between local machine encryption and portable password encryption.\n\n" +
                                  "Examples:\n" +
                                  "  o config set-encryption local\n" +
-                                 "  o config set-encryption portable --password my-secret")
+                                 "  o config set-encryption portable --password my-secret\n" +
+                                 "  o config set-encryption portable --password my-secret -y   # skip confirmation, e.g. for scripting")
     {
         var _console = console ?? AnsiConsole.Console;
 
         var modeArg = new Argument<string>("mode", "Encryption mode: local or portable.");
         var setEncPassOpt = new Option<string>(new[] { "-p", "--password" }, "Portable-mode password. Omit it to be prompted interactively.");
-        
+        var confirmOpt = new Option<bool>(new[] { "-y", "--yes" }, "Skip confirmation prompt.");
+
         AddArgument(modeArg);
         AddOption(setEncPassOpt);
+        AddOption(confirmOpt);
 
-        this.SetHandler((string mode, string? passInput) => 
+        this.SetHandler((string mode, string? passInput, bool skipConfirm) =>
         {
             mode = mode.ToLower();
             if (mode != "local" && mode != "portable") 
@@ -55,7 +58,7 @@ public class SetEncryptionCommand : Command
                 _console.MarkupLine($"[yellow]Warning: Could not create backup: {backupEx.Message}[/]");
             }
             
-            if (!_console.Confirm($"Switch from {(configService.IsPortableMode() ? "portable" : "local")} to {mode} encryption mode? Keys will be re-encrypted.", false))
+            if (!skipConfirm && !_console.Confirm($"Switch from {(configService.IsPortableMode() ? "portable" : "local")} to {mode} encryption mode? Keys will be re-encrypted.", false))
             {
                 _console.MarkupLine("[yellow]Cancelled.[/]");
                 return;
@@ -102,6 +105,6 @@ public class SetEncryptionCommand : Command
             {
                 _console.MarkupLine($"[red]Migration failed:[/] {ex.Message}");
             }
-        }, modeArg, setEncPassOpt);
+        }, modeArg, setEncPassOpt, confirmOpt);
     }
 }

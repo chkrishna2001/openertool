@@ -19,8 +19,8 @@ RUN dotnet tool install --global --add-source /nupkg com.chirravuris.opener
 # Add tool to path
 ENV PATH="/root/.dotnet/tools:${PATH}"
 
-# Ensure we have bash and necessary utilities
-RUN apt-get update && apt-get install -y bash curl
+# Ensure we have bash and necessary utilities (git is required by the sync integration test)
+RUN apt-get update && apt-get install -y bash curl git
 
 # Run integration tests using bash script
 COPY tests/integration_test.sh /test.sh
