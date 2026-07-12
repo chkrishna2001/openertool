@@ -600,7 +600,7 @@ public static class DocsHtmlGenerator
                         <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                         Secure Storage
                     </h3>
-                    <p>Uses Windows DPAPI or AES-256 machine keys to securely encrypt credentials. Portable mode enables sync via OneDrive or iCloud.</p>
+                    <p>Uses Windows DPAPI or AES-256 machine keys to securely encrypt credentials. Portable (password-based) mode lets you sync the vault yourself across machines - via git (see Git-Based Vault Sync) or any file-sync tool you already use.</p>
                 </div>
                 <div class="card">
                     <h3>
@@ -674,6 +674,16 @@ public static class DocsHtmlGenerator
                         <td><code>o view mykey</code> or <code>o mykey -v</code></td>
                     </tr>
                     <tr>
+                        <td><code>-e</code></td>
+                        <td>Run a <code>LocalPath</code> key elevated (admin/sudo), overriding how it was stored.</td>
+                        <td><code>o mykey -e</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>docs</code></td>
+                        <td>Open this documentation in your browser, or write it to a file.</td>
+                        <td><code>o docs</code> or <code>o docs -o docs.html</code></td>
+                    </tr>
+                    <tr>
                         <td><code>backup</code></td>
                         <td>Create a timestamped backup of the current database.</td>
                         <td><code>o backup --password pass</code></td>
@@ -681,22 +691,72 @@ public static class DocsHtmlGenerator
                     <tr>
                         <td><code>export</code></td>
                         <td>Export database to a password-protected portable file.</td>
-                        <td><code>o export backup.dat</code></td>
+                        <td><code>o export backup.dat --password pass</code></td>
                     </tr>
                     <tr>
                         <td><code>import</code></td>
                         <td>Import keys from a password-protected file.</td>
-                        <td><code>o import backup.dat</code></td>
+                        <td><code>o import backup.dat --password pass</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>sync push / pull / status</code></td>
+                        <td>Push/pull the encrypted vault through a git remote instead of a cloud-storage client. See the Git-Based Vault Sync section.</td>
+                        <td><code>o sync push</code></td>
                     </tr>
                     <tr>
                         <td><code>config show</code></td>
-                        <td>Display configuration file location, encryption type, etc.</td>
+                        <td>Display configuration file location, encryption type, global aliases/defaults, etc.</td>
                         <td><code>o config show</code></td>
                     </tr>
                     <tr>
+                        <td><code>config set-location</code></td>
+                        <td>Set a custom path for the encrypted data file.</td>
+                        <td><code>o config set-location "/path/to/opener.dat"</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config set-encryption</code></td>
+                        <td>Switch between local (machine-tied) and portable (password) encryption. Use <code>-y</code> to skip the confirmation prompt.</td>
+                        <td><code>o config set-encryption portable --password pass</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config clear-password</code></td>
+                        <td>Clear the cached portable-mode password from the local credential store.</td>
+                        <td><code>o config clear-password</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config set-url-aliases</code> / <code>clear-url-alias(es)</code></td>
+                        <td>Set or clear the global alias map for a named placeholder. Setting replaces that placeholder's whole map - it doesn't merge.</td>
+                        <td><code>o config set-url-aliases env d=-dev u=-uat p=</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config set-default-params</code> / <code>clear-default-param(s)</code></td>
+                        <td>Set or clear one global default value for a named placeholder.</td>
+                        <td><code>o config set-default-params user kchirravuri</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config set-provider smtp</code></td>
+                        <td>Configure SMTP credentials for <code>EmailTemplate</code> keys.</td>
+                        <td><code>o config set-provider smtp --server host --port 587 --username u --password p</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config set-provider graph</code></td>
+                        <td>Configure Microsoft Graph client-credential auth for sending email/calendar invites.</td>
+                        <td><code>o config set-provider graph --tenant-id t --client-id c --client-secret s</code></td>
+                    </tr>
+                    <tr>
                         <td><code>config auth-graph</code></td>
-                        <td>Login to Microsoft Graph (Device Code Flow) for OneDrive.</td>
+                        <td>Device-code login to Microsoft Graph, for sending email/creating calendar events (not for vault storage/sync).</td>
                         <td><code>o config auth-graph</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config set-sync-remote</code> / <code>set-sync-token</code></td>
+                        <td>Set the git remote used by <code>o sync</code>, and (for HTTPS remotes) store an access token.</td>
+                        <td><code>o config set-sync-remote git@github.com:me/vault.git</code></td>
+                    </tr>
+                    <tr>
+                        <td><code>config enable-auto-sync</code> / <code>disable-auto-sync</code></td>
+                        <td>Automatically push to the sync remote after add/update/delete/import.</td>
+                        <td><code>o config enable-auto-sync</code></td>
                     </tr>
                 </tbody>
             </table>
@@ -805,13 +865,13 @@ o hosts  # Opens hosts in notepad as administrator</code></pre>
             <h2>Email Templates (<code>EmailTemplate</code>)</h2>
             <p>Allows sending templated emails via **SMTP** or **Microsoft Graph API**. Value must be a valid JSON matching this schema:</p>
             <pre><code>{
-  "To": "recipient@company.com",
-  "Cc": "",
-  "Bcc": "",
-  "Subject": "Alert: <level>",
-  "Body": "System report details: <details>",
-  "AttachmentPath": "",
-  "Provider": "system"
+  "to": "recipient@company.com",
+  "cc": "",
+  "bcc": "",
+  "subject": "Alert: <level>",
+  "body": "System report details: <details>",
+  "attachmentPath": "",
+  "provider": "system"
 }</code></pre>
 
             <h3>Providers:</h3>
@@ -827,13 +887,13 @@ o hosts  # Opens hosts in notepad as administrator</code></pre>
             <h2>Calendar Events (<code>CalendarEvent</code>)</h2>
             <p>Creates calendar invites or schedules meetings. Value must be a valid JSON matching this schema:</p>
             <pre><code>{
-  "Subject": "Sync Meeting",
-  "Body": "Discussion about development roadmap",
-  "Invitees": "personA@company.com, personB@company.com",
-  "DurationMinutes": 30,
-  "Availability": "busy",
-  "Provider": "system",
-  "StartTime": "tomorrow 10:00"
+  "subject": "Sync Meeting",
+  "body": "Discussion about development roadmap",
+  "invitees": "personA@company.com, personB@company.com",
+  "durationMinutes": 30,
+  "availability": "busy",
+  "provider": "system",
+  "startTime": "tomorrow 10:00"
 }</code></pre>
 
             <h3>Features:</h3>
@@ -1140,13 +1200,13 @@ o config disable-auto-sync</code></pre>
             if (type === 'email') {
                 typeFlag = 'EmailTemplate';
                 json = {
-                    To: document.getElementById('emailTo')?.value || '',
-                    Cc: document.getElementById('emailCc')?.value || '',
-                    Bcc: document.getElementById('emailBcc')?.value || '',
-                    Subject: document.getElementById('emailSubject')?.value || '',
-                    Body: document.getElementById('emailBody')?.value || '',
-                    AttachmentPath: document.getElementById('emailAttachment')?.value || '',
-                    Provider: document.getElementById('emailProvider')?.value || 'system'
+                    to: document.getElementById('emailTo')?.value || '',
+                    cc: document.getElementById('emailCc')?.value || '',
+                    bcc: document.getElementById('emailBcc')?.value || '',
+                    subject: document.getElementById('emailSubject')?.value || '',
+                    body: document.getElementById('emailBody')?.value || '',
+                    attachmentPath: document.getElementById('emailAttachment')?.value || '',
+                    provider: document.getElementById('emailProvider')?.value || 'system'
                 };
             } else if (type === 'rest') {
                 typeFlag = 'Rest';
@@ -1167,13 +1227,13 @@ o config disable-auto-sync</code></pre>
                 let dur = parseInt(document.getElementById('calDuration')?.value || '30', 10);
                 if (isNaN(dur)) dur = 30;
                 json = {
-                    Subject: document.getElementById('calSubject')?.value || '',
-                    Body: document.getElementById('calBody')?.value || '',
-                    Invitees: document.getElementById('calInvitees')?.value || '',
-                    DurationMinutes: dur,
-                    Availability: document.getElementById('calAvailability')?.value || 'busy',
-                    Provider: document.getElementById('calProvider')?.value || 'system',
-                    StartTime: document.getElementById('calStartTime')?.value || ''
+                    subject: document.getElementById('calSubject')?.value || '',
+                    body: document.getElementById('calBody')?.value || '',
+                    invitees: document.getElementById('calInvitees')?.value || '',
+                    durationMinutes: dur,
+                    availability: document.getElementById('calAvailability')?.value || 'busy',
+                    provider: document.getElementById('calProvider')?.value || 'system',
+                    startTime: document.getElementById('calStartTime')?.value || ''
                 };
             }
 
