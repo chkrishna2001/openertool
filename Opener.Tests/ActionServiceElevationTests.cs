@@ -61,6 +61,17 @@ public class ActionServiceElevationTests
     [Fact]
     public async Task LocalPath_ReportsError_WhenElevatedLaunchFails_InsteadOfSilentlyFallingBackUnelevated()
     {
+        // Windows-only: a bad elevated path fails synchronously here (ShellExecuteEx with
+        // Verb=runas throws immediately for a nonexistent file), which is the scenario this
+        // test exercises. On Linux/macOS the elevated branch shells out to "sudo" (which
+        // exists on the runner and starts successfully) - any "path not found" failure
+        // happens asynchronously inside the spawned sudo process, not as a .NET exception,
+        // so there's nothing synchronous to assert on there.
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
         var service = new ActionService();
         var key = new OKey
         {
