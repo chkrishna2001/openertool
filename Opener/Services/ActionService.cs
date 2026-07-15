@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net.Http;
 using System.Runtime.InteropServices;
@@ -156,29 +157,20 @@ public class ActionService : IActionService
         bool isElevated = key.Elevated || elevated;
         ProcessStartInfo psi;
 
-        if (isElevated)
+        if (isElevated && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            // Linux and macOS: use sudo
+            psi = new ProcessStartInfo
             {
-                psi = new ProcessStartInfo
-                {
-                    FileName = key.Value,
-                    UseShellExecute = true,
-                    Verb = "runas"
-                };
-                if (args != null) foreach (var arg in args) psi.ArgumentList.Add(arg);
-            }
-            else
-            {
-                // Linux and macOS: use sudo
-                psi = new ProcessStartInfo
-                {
-                    FileName = "sudo",
-                    UseShellExecute = false
-                };
-                psi.ArgumentList.Add(key.Value);
-                if (args != null) foreach (var arg in args) psi.ArgumentList.Add(arg);
-            }
+                FileName = "sudo",
+                UseShellExecute = false
+            };
+            psi.ArgumentList.Add(key.Value);
+            if (args != null) foreach (var arg in args) psi.ArgumentList.Add(arg);
+        }
+        else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        {
+            psi = BuildWindowsLocalPathProcessStartInfo(key.Value, args, isElevated);
         }
         else
         {
@@ -194,11 +186,94 @@ public class ActionService : IActionService
         {
             Process.Start(psi);
         }
-        catch
+        catch (Exception ex)
         {
+            if (isElevated)
+            {
+                // Do not silently fall back to a non-elevated launch here - that would
+                // defeat the purpose of -e/--elevated (e.g. masking a canceled UAC
+                // prompt or a missing sudo binary as if it just worked).
+                AnsiConsole.MarkupLine($"[red]Failed to launch elevated:[/] {ex.Message}");
+                return;
+            }
+
             // Fallback for non-executable files or different platforms
             OpenUrl(key.Value);
         }
+    }
+
+    /// <summary>
+    /// ShellExecuteEx's "runas" verb only applies to executables (.exe/.com/.bat/.cmd) - see
+    /// https://learn.microsoft.com/windows/win32/api/shellapi/nf-shellapi-shellexecutew. For
+    /// .ps1, Windows' registered default action is opening it in a text editor (not running
+    /// it) as an anti-phishing measure, and that association has no "runas" verb at all, so
+    /// ShellExecute-ing the path directly just performs the default (editor) action and
+    /// silently drops the elevation request - no exception, no prompt. Anything else keeps
+    /// using the plain file-association path since Windows does support "runas" for it.
+    /// </summary>
+    internal static ProcessStartInfo BuildWindowsLocalPathProcessStartInfo(string path, string[] args, bool elevated)
+    {
+        ProcessStartInfo psi;
+        if (path.EndsWith(".ps1", StringComparison.OrdinalIgnoreCase))
+        {
+            psi = new ProcessStartInfo
+            {
+                FileName = ResolvePowerShellExecutable(),
+                UseShellExecute = true
+            };
+            psi.ArgumentList.Add("-NoProfile");
+            psi.ArgumentList.Add("-ExecutionPolicy");
+            psi.ArgumentList.Add("Bypass");
+            psi.ArgumentList.Add("-File");
+            psi.ArgumentList.Add(path);
+        }
+        else
+        {
+            psi = new ProcessStartInfo
+            {
+                FileName = path,
+                UseShellExecute = true
+            };
+        }
+
+        if (elevated)
+        {
+            psi.Verb = "runas";
+        }
+
+        if (args != null)
+        {
+            foreach (var arg in args) psi.ArgumentList.Add(arg);
+        }
+
+        return psi;
+    }
+
+    /// <summary>
+    /// Prefers PowerShell 7+ (pwsh.exe) if it's on PATH, since that's what most users have
+    /// switched to; falls back to the Windows-builtin powershell.exe otherwise. Resolved via
+    /// PATH lookup rather than a fixed install path, matching however the user actually has
+    /// it installed.
+    /// </summary>
+    internal static string ResolvePowerShellExecutable()
+    {
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? string.Empty;
+        foreach (var dir in pathEnv.Split(Path.PathSeparator))
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(dir) && File.Exists(Path.Combine(dir, "pwsh.exe")))
+                {
+                    return "pwsh.exe";
+                }
+            }
+            catch
+            {
+                // Malformed PATH entry - skip it and keep looking.
+            }
+        }
+
+        return "powershell.exe";
     }
 
     private void HandleJsonData(OKey key, bool returnValue = false, bool forceCopy = false)

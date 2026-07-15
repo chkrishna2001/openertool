@@ -50,8 +50,20 @@ public static class InteractiveKeyPicker
             return "[grey]Cancel[/]";
         }
 
-        var description = string.IsNullOrWhiteSpace(key.Description) ? string.Empty : $" - {key.Description}";
-        return Markup.Escape($"{key.Key}  [{key.KeyType}]{description}");
+        var description = string.IsNullOrWhiteSpace(key.Description) ? string.Empty : $" - {SanitizeForSearchablePrompt(key.Description)}";
+        return $"{SanitizeForSearchablePrompt(key.Key)}  ({key.KeyType}){description}";
+    }
+
+    /// <summary>
+    /// Spectre.Console's SelectionPrompt search/highlight rendering re-parses the converted
+    /// choice text as markup and mishandles escaped brackets (e.g. from Markup.Escape) once a
+    /// search is active, throwing "malformed markup tag" / "unescaped ']'" errors. Rather than
+    /// escape "[" / "]", strip them from user-controlled text so there's nothing for the
+    /// tokenizer to misparse.
+    /// </summary>
+    private static string SanitizeForSearchablePrompt(string? text)
+    {
+        return string.IsNullOrEmpty(text) ? string.Empty : text.Replace('[', '(').Replace(']', ')');
     }
 
     private static void RenderStaticTable(IAnsiConsole console, List<OKey> candidates)

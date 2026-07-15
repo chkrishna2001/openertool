@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-07-15
+
+### Fixed
+- `LocalPath` keys run with `-e`/`--elevated` (or `Elevated: true`) silently fell back to a non-elevated launch whenever the elevated launch itself failed (UAC prompt canceled, `sudo` missing, etc.), instead of reporting the failure — so elevation could silently no-op with no indication anything went wrong.
+- `.ps1` `LocalPath` keys never actually elevated (or ran) at all: Windows' `ShellExecuteEx` `"runas"` verb only applies to executables, and the registered default action for `.ps1` is opening it in a text editor (an anti-phishing measure), which has no `"runas"` verb — so ShellExecute-ing the path directly just performed that default action and silently dropped the elevation request. `.ps1` scripts are now launched through the resolved PowerShell executable (`pwsh.exe` if present on `PATH`, else the built-in `powershell.exe`) with `-File`, for both elevated and non-elevated runs; every other executable type (`.exe`, `.bat`, `.cmd`, ...) is unaffected and still uses the plain file-association path.
+- The interactive key picker (`o` with no arguments) crashed with `Encountered unescaped ']' token` / `malformed markup tag` as soon as you typed anything into search. Spectre.Console's `SelectionPrompt` search-highlighting re-parses each choice's converted text as markup and mishandles the `Markup.Escape()`'d brackets that every entry's `[KeyType]` tag produced. Choice text no longer contains literal brackets at all, so there's nothing left for it to misparse.
+
 ## [1.1.0] - 2026-07-12
 
 ### Added
