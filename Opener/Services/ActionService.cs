@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Opener.Commands;
 using Opener.Models;
@@ -29,6 +30,10 @@ public class RestData
     /// (dot-separated, with optional [index] array access, e.g. "data.token" or
     /// "items[0].id"). Captured values are available to later steps in a chain as
     /// {{varName}} in their Url, Headers values, or Body.
+    ///
+    /// Separately, {{key:name}} in Url, Headers values, or Body resolves to the raw
+    /// stored Value of another Opener key (e.g. a Data key holding an API token) - lets
+    /// a Rest key reference a secret stored elsewhere in the vault instead of inlining it.
     /// </summary>
     public Dictionary<string, string>? Extract { get; set; }
 }
@@ -365,6 +370,7 @@ public class ActionService : IActionService
             }
 
             var conf = _configService?.GetConfig();
+            var vaultKeys = _storageService?.GetKeys();
             var vars = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             string lastContent = string.Empty;
 
@@ -374,7 +380,7 @@ public class ActionService : IActionService
                 var stepLabel = steps.Count > 1 ? $"({i + 1}/{steps.Count}) " : string.Empty;
 
                 var resolved = UrlTemplateResolver.Resolve(
-                    SubstituteVars(step.Url, vars),
+                    SubstituteVars(ResolveKeyReferences(step.Url, vaultKeys), vars),
                     args,
                     conf?.GlobalUrlAliases,
                     conf?.GlobalDefaultParams,
@@ -397,7 +403,7 @@ public class ActionService : IActionService
                 {
                     foreach (var (headerName, headerValue) in step.Headers)
                     {
-                        var resolvedHeaderValue = SubstituteVars(headerValue, vars);
+                        var resolvedHeaderValue = SubstituteVars(ResolveKeyReferences(headerValue, vaultKeys), vars);
                         if (headerName.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
                         {
                             contentType = resolvedHeaderValue;
@@ -411,7 +417,7 @@ public class ActionService : IActionService
 
                 if (!string.IsNullOrEmpty(step.Body))
                 {
-                    request.Content = new StringContent(SubstituteVars(step.Body, vars), Encoding.UTF8, contentType ?? "application/json");
+                    request.Content = new StringContent(SubstituteVars(ResolveKeyReferences(step.Body, vaultKeys), vars), Encoding.UTF8, contentType ?? "application/json");
                 }
 
                 var result = await _httpRequestSender.SendAsync(request);
@@ -486,6 +492,33 @@ public class ActionService : IActionService
             input = input.Replace("{{" + name + "}}", value);
         }
         return input;
+    }
+
+    private static readonly Regex KeyReferencePattern = new(@"\{\{key:([^}]+)\}\}", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Resolves {{key:name}} references to another stored Opener key's raw Value - lets a
+    /// Rest key pull in a secret (e.g. a Data key holding an API token) instead of inlining
+    /// it. Unresolvable references warn and are left literal, same as a failed Extract.
+    /// </summary>
+    private static string ResolveKeyReferences(string? input, List<OKey>? vaultKeys)
+    {
+        if (string.IsNullOrEmpty(input) || vaultKeys == null || !input.Contains("{{key:"))
+        {
+            return input ?? string.Empty;
+        }
+
+        return KeyReferencePattern.Replace(input, match =>
+        {
+            var name = match.Groups[1].Value;
+            var referenced = vaultKeys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (referenced == null)
+            {
+                AnsiConsole.MarkupLine($"[yellow]Warning:[/] Could not resolve '{{{{key:{name}}}}}' - no key named '{name}' found.");
+                return match.Value;
+            }
+            return referenced.Value;
+        });
     }
 
     private async Task HandleEmailTemplate(OKey key, string[] args, bool returnValue = false, bool forceCopy = false)

@@ -841,6 +841,16 @@ o hosts  # Opens hosts in notepad as administrator</code></pre>
                 <p>Instead of manually typing this JSON, scroll down to our interactive **JSON Key Builder** to generate this structure with form textboxes!</p>
             </div>
 
+            <h3>Referencing another stored key</h3>
+            <p><code>{{key:name}}</code> in <code>url</code>, <code>headers</code>, or <code>body</code> resolves to the raw stored value of another key in your vault, looked up by name (case-insensitive). Keep an API token in its own <code>Data</code> key and reference it from as many <code>Rest</code> keys as you like, instead of copy-pasting the secret into each one.</p>
+            <pre><code>{
+  "url": "https://api.github.com/users/{0}",
+  "method": "GET",
+  "headers": {
+    "Authorization": "Bearer {{key:githubtoken}}"
+  }
+}</code></pre>
+
             <h3>Chaining requests (login, then call)</h3>
             <p>Instead of a single request, the value can be a <code>{ "steps": [...] }</code> array. Each step can <code>extract</code> values from its JSON response using a simple dot-separated path (e.g. <code>"data.token"</code> or <code>"items[0].id"</code>), and later steps reference them as <code>{{varName}}</code> in their <code>url</code>, <code>headers</code>, or <code>body</code>. Only the last step's response is printed. If a non-final step fails, the whole chain aborts instead of continuing with bad data.</p>
             <pre><code>{

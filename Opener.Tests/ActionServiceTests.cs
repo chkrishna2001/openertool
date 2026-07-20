@@ -306,4 +306,90 @@ public class ActionServiceTests
         Assert.True(capturedRequests[1].Headers.TryGetValues("Authorization", out var authValues));
         Assert.Equal("Bearer {{token}}", authValues!.First());
     }
+
+    [Fact]
+    public async Task HandleRest_KeyReference_ResolvesFromAnotherStoredKey()
+    {
+        var senderMock = new Mock<IHttpRequestSender>();
+        HttpRequestMessage? captured = null;
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Callback<HttpRequestMessage>(r => captured = r)
+            .ReturnsAsync(new HttpCallResult(200, true, "{}"));
+
+        var storageServiceMock = new Mock<IStorageService>();
+        storageServiceMock.Setup(s => s.GetKeys()).Returns(new List<OKey>
+        {
+            new OKey { Key = "githubtoken", KeyType = OKeyType.Data, Value = "secret-abc-123" }
+        });
+
+        var service = new ActionService(storageService: storageServiceMock.Object, httpRequestSender: senderMock.Object);
+        var key = new OKey
+        {
+            Key = "api",
+            KeyType = OKeyType.Rest,
+            Value = "{\"url\":\"https://api.example.com/data\",\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer {{key:githubtoken}}\"}}"
+        };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        Assert.NotNull(captured);
+        Assert.True(captured!.Headers.TryGetValues("Authorization", out var values));
+        Assert.Equal("Bearer secret-abc-123", values!.First());
+    }
+
+    [Fact]
+    public async Task HandleRest_KeyReference_LookupIsCaseInsensitive()
+    {
+        var senderMock = new Mock<IHttpRequestSender>();
+        HttpRequestMessage? captured = null;
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Callback<HttpRequestMessage>(r => captured = r)
+            .ReturnsAsync(new HttpCallResult(200, true, "{}"));
+
+        var storageServiceMock = new Mock<IStorageService>();
+        storageServiceMock.Setup(s => s.GetKeys()).Returns(new List<OKey>
+        {
+            new OKey { Key = "GitHubToken", KeyType = OKeyType.Data, Value = "secret-abc-123" }
+        });
+
+        var service = new ActionService(storageService: storageServiceMock.Object, httpRequestSender: senderMock.Object);
+        var key = new OKey
+        {
+            Key = "api",
+            KeyType = OKeyType.Rest,
+            Value = "{\"url\":\"https://api.example.com/data/{{key:githubtoken}}\",\"method\":\"GET\"}"
+        };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        Assert.NotNull(captured);
+        Assert.Equal("https://api.example.com/data/secret-abc-123", captured!.RequestUri!.ToString());
+    }
+
+    [Fact]
+    public async Task HandleRest_KeyReference_NotFound_WarnsAndLeavesLiteralPlaceholder()
+    {
+        var senderMock = new Mock<IHttpRequestSender>();
+        HttpRequestMessage? captured = null;
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Callback<HttpRequestMessage>(r => captured = r)
+            .ReturnsAsync(new HttpCallResult(200, true, "{}"));
+
+        var storageServiceMock = new Mock<IStorageService>();
+        storageServiceMock.Setup(s => s.GetKeys()).Returns(new List<OKey>());
+
+        var service = new ActionService(storageService: storageServiceMock.Object, httpRequestSender: senderMock.Object);
+        var key = new OKey
+        {
+            Key = "api",
+            KeyType = OKeyType.Rest,
+            Value = "{\"url\":\"https://api.example.com/data\",\"method\":\"GET\",\"headers\":{\"Authorization\":\"Bearer {{key:missing}}\"}}"
+        };
+
+        await service.ExecuteAsync(key, new string[0]);
+
+        Assert.NotNull(captured);
+        Assert.True(captured!.Headers.TryGetValues("Authorization", out var values));
+        Assert.Equal("Bearer {{key:missing}}", values!.First());
+    }
 }

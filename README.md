@@ -170,6 +170,17 @@ o add get-user "{ \"url\": \"https://api.github.com/users/{0}\", \"method\": \"G
 o get-user chkri
 ```
 
+**Referencing another stored key:** `{{key:name}}` in a `Rest` key's `url`, `headers`, or
+`body` resolves to the raw stored value of another key in your vault — handy for keeping an
+API token in its own `Data` key (so it's listed, editable, and reusable on its own) instead of
+inlining it into every `Rest` key that needs it. Lookup is by key name, case-insensitive.
+
+```bash
+o add githubtoken "ghp_xxxxxxxxxxxx" -t Data
+o add get-user '{ "url": "https://api.github.com/users/{0}", "method": "GET", "headers": { "Authorization": "Bearer {{key:githubtoken}}" } }' -t Rest
+o get-user chkri
+```
+
 **Chaining requests (login, then call):** instead of a single request, the value can be
 `{ "steps": [...] }` — each step can `extract` values from its JSON response (dot-separated
 path, e.g. `"data.token"` or `"items[0].id"`), and later steps reference them as `{{varName}}`
