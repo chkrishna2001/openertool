@@ -25,7 +25,7 @@ Last updated 2026-11-24 by "Add Template key type"
 
 ## Last session
 - Added `Template` key type (`OKeyType.Template = 9`) via `UrlTemplateResolver.ResolveText` (strict `{N}` match: `{{0}}`, `{0:x}`, JSON/code braces stay literal). Placeholder warnings now go to stderr so `$(o key -r)` is clean. Fixed `$` in named values being treated as regex substitution tokens.
-- Verified: all 126 unit tests pass on net8.0 and net10.0; sandboxed CLI smoke test of add/-r/stderr. Not committed at time of writing.
+- Verified: all 126 unit tests pass on net8.0 and net10.0; sandboxed CLI smoke test of add/-r/stderr. Committed in 30963b4 (not pushed; AOT publish not run).
 
 ## Next task
 - Decide whether Rest should resolve placeholders before `{{key:name}}` (see Remaining); done when the order is changed or documented and a test covers a secret containing `<x>`.
