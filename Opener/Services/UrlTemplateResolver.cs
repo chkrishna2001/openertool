@@ -43,6 +43,155 @@ public static class UrlTemplateResolver
         Dictionary<string, string>? keyDefaults)
         => ResolveCore(template, args, globalAliases, globalDefaults, keyAliases, keyDefaults, strictIndexed: true);
 
+    // One alternation so a single left-to-right scan sees every token in the original text.
+    // {{...}} is tried first, so {{0}} is a double-brace token, never a {0} placeholder.
+    private static readonly Regex SinglePassTokenRegex = new(
+        @"\{\{(?<inner>[^{}]+)\}\}|(?<!\{)\{(?<index>\d+)\}(?!\})|<(?<name>[a-zA-Z][a-zA-Z0-9_-]*)>",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Resolves every token of <paramref name="template"/> in one pass over the original text:
+    /// {{inner}} via <paramref name="resolveDoubleBrace"/> (null keeps it literal), and, when
+    /// <paramref name="placeholders"/> is true, exact {N} and &lt;name&gt; placeholders with the
+    /// same arg/alias/default rules as <see cref="Resolve"/>. Inserted values are final: they are
+    /// never rescanned, so a value containing {0}, &lt;x&gt; or {{key:x}} reaches the output as-is.
+    /// </summary>
+    public static UrlTemplateResolutionResult ResolveSinglePass(
+        string? template,
+        string[]? args,
+        Dictionary<string, Dictionary<string, string>>? globalAliases,
+        Dictionary<string, string>? globalDefaults,
+        Dictionary<string, Dictionary<string, string>>? keyAliases,
+        Dictionary<string, string>? keyDefaults,
+        bool placeholders,
+        Func<string, string?>? resolveDoubleBrace)
+    {
+        var result = new UrlTemplateResolutionResult { Value = template ?? string.Empty };
+        if (string.IsNullOrEmpty(result.Value))
+        {
+            return result;
+        }
+
+        var matches = SinglePassTokenRegex.Matches(result.Value);
+        if (matches.Count == 0)
+        {
+            return result;
+        }
+
+        var indexedValues = new Dictionary<int, string>();
+        var namedValues = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (placeholders)
+        {
+            var (namedArgs, positionalArgs) = SplitArgs(args);
+
+            // Indexed {N} first: {N} takes positional arg N; the highest index decides how many are consumed.
+            var maxIndex = -1;
+            foreach (Match m in matches)
+            {
+                if (m.Groups["index"].Success && int.TryParse(m.Groups["index"].Value, out var idx))
+                {
+                    maxIndex = Math.Max(maxIndex, idx);
+                    if (idx < positionalArgs.Count)
+                    {
+                        indexedValues[idx] = positionalArgs[idx];
+                    }
+                }
+            }
+
+            var consumed = 0;
+            if (maxIndex >= 0)
+            {
+                consumed = Math.Min(positionalArgs.Count, maxIndex + 1);
+                if (positionalArgs.Count < maxIndex + 1)
+                {
+                    result.Warnings.Add("Some indexed placeholders were missing input values and were left unresolved.");
+                }
+            }
+
+            // Then <name> in order of first appearance: name=value, next unused positional, default.
+            var placeholderOrder = matches
+                .Where(m => m.Groups["name"].Success)
+                .Select(m => m.Groups["name"].Value)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (placeholderOrder.Count > 0)
+            {
+                var aliases = MergeAliases(globalAliases, keyAliases);
+                var defaults = MergeDefaults(globalDefaults, keyDefaults);
+                var positionalIndex = consumed;
+
+                foreach (var placeholder in placeholderOrder)
+                {
+                    if (namedArgs.TryGetValue(placeholder, out var explicitValue))
+                    {
+                        namedValues[placeholder] = ResolveAlias(aliases, placeholder, explicitValue);
+                    }
+                    else if (positionalIndex < positionalArgs.Count)
+                    {
+                        namedValues[placeholder] = ResolveAlias(aliases, placeholder, positionalArgs[positionalIndex++]);
+                    }
+                    else if (defaults.TryGetValue(placeholder, out var defaultValue))
+                    {
+                        namedValues[placeholder] = ResolveAlias(aliases, placeholder, defaultValue);
+                    }
+                    else
+                    {
+                        result.Warnings.Add($"No value provided for <{placeholder}>. Keeping placeholder as-is.");
+                    }
+                }
+
+                if (positionalIndex < positionalArgs.Count)
+                {
+                    result.Warnings.Add("Some positional arguments were unused.");
+                }
+            }
+        }
+
+        // Evaluator, not a replacement string: values are inserted verbatim ($1 etc. are not group references).
+        result.Value = SinglePassTokenRegex.Replace(result.Value, m =>
+        {
+            if (m.Groups["inner"].Success)
+            {
+                return resolveDoubleBrace?.Invoke(m.Groups["inner"].Value) ?? m.Value;
+            }
+
+            if (!placeholders)
+            {
+                return m.Value;
+            }
+
+            if (m.Groups["index"].Success)
+            {
+                return int.TryParse(m.Groups["index"].Value, out var idx) && indexedValues.TryGetValue(idx, out var v) ? v : m.Value;
+            }
+
+            return namedValues.TryGetValue(m.Groups["name"].Value, out var named) ? named ?? string.Empty : m.Value;
+        });
+
+        return result;
+    }
+
+    private static (Dictionary<string, string> Named, List<string> Positional) SplitArgs(string[]? args)
+    {
+        var namedArgs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        var positionalArgs = new List<string>();
+
+        foreach (var token in args ?? Array.Empty<string>())
+        {
+            if (TryParseKeyValue(token, out var key, out var value))
+            {
+                namedArgs[key] = value;
+                continue;
+            }
+
+            positionalArgs.Add(token);
+        }
+
+        return (namedArgs, positionalArgs);
+    }
+
     private static UrlTemplateResolutionResult ResolveCore(
         string template,
         string[]? args,
@@ -58,20 +207,7 @@ public static class UrlTemplateResolver
             return result;
         }
 
-        var normalizedArgs = args ?? Array.Empty<string>();
-        var namedArgs = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        var positionalArgs = new List<string>();
-
-        foreach (var token in normalizedArgs)
-        {
-            if (TryParseKeyValue(token, out var key, out var value))
-            {
-                namedArgs[key] = value;
-                continue;
-            }
-
-            positionalArgs.Add(token);
-        }
+        var (namedArgs, positionalArgs) = SplitArgs(args);
 
         var indexedOutcome = strictIndexed
             ? ResolveIndexedPlaceholdersStrict(result.Value, positionalArgs)

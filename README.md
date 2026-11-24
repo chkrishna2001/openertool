@@ -207,6 +207,13 @@ o add authed-api '{
 o authed-api 123
 ```
 
+**What gets substituted where:** `{0}` and `<name>` arguments work in `url` only (`headers`
+and `body` leave them as written, so XML bodies and literal braces are safe). `{{key:name}}`
+and `{{varName}}` work in all three. Every value is inserted exactly as-is and never
+re-scanned: a token containing `{0}` or `<x>` reaches the server unchanged, and a response
+that returns `{{key:...}}` text cannot pull another vault key into the next request. Only an
+exact `{0}` is a placeholder; `{{0}}` and `{0:x}` stay literal.
+
 #### 6. Email Templates (`EmailTemplate`)
 Send templated emails from the terminal via your system mail client, SMTP, or Microsoft Graph. Value must be a valid JSON object with **camelCase** field names (`to`, `cc`, `bcc`, `subject`, `body`, `attachmentPath`, `provider`).
 

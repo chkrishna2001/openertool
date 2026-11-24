@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Placeholder warnings (e.g. `No value provided for <name>`) were written to stdout, so `$(o key -r)` captured them along with the value. They now go to stderr.
+- `Rest` keys inserted a `{{key:name}}` secret before resolving placeholders and extracted vars, so the secret's own text was rescanned: `{0}` took a CLI argument, `<x>` took a default, stray braces broke formatting, and `{{token}}` took an extracted value. `url`, `headers` and `body` are now resolved in one pass over the text as written, so every inserted value (arguments, referenced keys, extracted values) is final; in particular a response value containing `{{key:...}}` can never pull a vault key into the next request. In a `Rest` `url`, only an exact `{0}` is now a placeholder (`{{0}}` and `{0:x}` stay literal, `{{`/`}}` no longer collapse). `headers`/`body` still take `{{key:name}}`/`{{varName}}` but not `{0}`/`<name>`.
 - A named placeholder value containing `$` substitution tokens was mangled (e.g. `pa$$word` became `pa$word`, `$0` re-inserted the `<name>` token); values are now inserted literally.
 
 ## [1.1.1] - 2026-07-15
