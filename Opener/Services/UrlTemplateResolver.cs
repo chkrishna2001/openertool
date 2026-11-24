@@ -16,6 +16,10 @@ public static class UrlTemplateResolver
     private static readonly Regex IndexedPlaceholderRegex = new(@"\{(\d+)(?:[^}]*)\}", RegexOptions.Compiled);
     private static readonly Regex NamedPlaceholderRegex = new(@"<([a-zA-Z][a-zA-Z0-9_-]*)>", RegexOptions.Compiled);
 
+    // Exactly {N}, not part of {{N}} - free text can't go through string.Format, which
+    // throws on any stray brace and collapses {{ / }} into single braces.
+    private static readonly Regex StrictIndexedPlaceholderRegex = new(@"(?<!\{)\{(\d+)\}(?!\})", RegexOptions.Compiled);
+
     public static UrlTemplateResolutionResult Resolve(
         string template,
         string[]? args,
@@ -23,6 +27,30 @@ public static class UrlTemplateResolver
         Dictionary<string, string>? globalDefaults,
         Dictionary<string, Dictionary<string, string>>? keyAliases,
         Dictionary<string, string>? keyDefaults)
+        => ResolveCore(template, args, globalAliases, globalDefaults, keyAliases, keyDefaults, strictIndexed: false);
+
+    /// <summary>
+    /// Same placeholder rules as <see cref="Resolve"/> ({0} positional, &lt;name&gt; named with
+    /// aliases/defaults), but for free text (Template keys): only an exact {N} is a placeholder,
+    /// so {{0}}, {0:x}, JSON, and code braces are all left exactly as written.
+    /// </summary>
+    public static UrlTemplateResolutionResult ResolveText(
+        string template,
+        string[]? args,
+        Dictionary<string, Dictionary<string, string>>? globalAliases,
+        Dictionary<string, string>? globalDefaults,
+        Dictionary<string, Dictionary<string, string>>? keyAliases,
+        Dictionary<string, string>? keyDefaults)
+        => ResolveCore(template, args, globalAliases, globalDefaults, keyAliases, keyDefaults, strictIndexed: true);
+
+    private static UrlTemplateResolutionResult ResolveCore(
+        string template,
+        string[]? args,
+        Dictionary<string, Dictionary<string, string>>? globalAliases,
+        Dictionary<string, string>? globalDefaults,
+        Dictionary<string, Dictionary<string, string>>? keyAliases,
+        Dictionary<string, string>? keyDefaults,
+        bool strictIndexed)
     {
         var result = new UrlTemplateResolutionResult { Value = template ?? string.Empty };
         if (string.IsNullOrEmpty(result.Value))
@@ -45,7 +73,9 @@ public static class UrlTemplateResolver
             positionalArgs.Add(token);
         }
 
-        var indexedOutcome = ResolveIndexedPlaceholders(result.Value, positionalArgs);
+        var indexedOutcome = strictIndexed
+            ? ResolveIndexedPlaceholdersStrict(result.Value, positionalArgs)
+            : ResolveIndexedPlaceholders(result.Value, positionalArgs);
         result.Value = indexedOutcome.Value;
         result.Warnings.AddRange(indexedOutcome.Warnings);
 
@@ -121,6 +151,34 @@ public static class UrlTemplateResolver
         }
     }
 
+    private static (string Value, int ConsumedPositionalCount, List<string> Warnings) ResolveIndexedPlaceholdersStrict(string template, List<string> positionalArgs)
+    {
+        var warnings = new List<string>();
+        var matches = StrictIndexedPlaceholderRegex.Matches(template);
+        if (matches.Count == 0)
+        {
+            return (template, 0, warnings);
+        }
+
+        var maxIndex = matches.Max(m => int.TryParse(m.Groups[1].Value, out var idx) ? idx : -1);
+        if (maxIndex < 0)
+        {
+            return (template, 0, warnings);
+        }
+
+        var replaced = StrictIndexedPlaceholderRegex.Replace(template, match =>
+            int.TryParse(match.Groups[1].Value, out var idx) && idx < positionalArgs.Count
+                ? positionalArgs[idx]
+                : match.Value);
+
+        if (positionalArgs.Count < maxIndex + 1)
+        {
+            warnings.Add("Some indexed placeholders were missing input values and were left unresolved.");
+        }
+
+        return (replaced, Math.Min(positionalArgs.Count, maxIndex + 1), warnings);
+    }
+
     private static (string Value, List<string> Warnings) ResolveNamedPlaceholders(
         string template,
         Dictionary<string, string> namedArgs,
@@ -175,7 +233,9 @@ public static class UrlTemplateResolver
         foreach (var kvp in resolvedValues)
         {
             var tokenRegex = new Regex($"<{Regex.Escape(kvp.Key)}>", RegexOptions.IgnoreCase);
-            template = tokenRegex.Replace(template, kvp.Value ?? string.Empty);
+            // Evaluator, not a replacement string: a value like "$100" must not be read as a $1 group reference.
+            var replacement = kvp.Value ?? string.Empty;
+            template = tokenRegex.Replace(template, _ => replacement);
         }
 
         return (template, warnings);

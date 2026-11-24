@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- `Template` key type: text with `{0}` positional and `<name>` named placeholders (same aliases/default params as `WebPath`) plus `{{key:name}}` references, copied to the clipboard or printed with `-r`. Only an exact `{0}` is a placeholder; `{{0}}`, `{0:x}` and JSON/code braces stay literal. `Data`, `JsonData` and `Totp` stay untemplated.
+- `{{key:name}}` in a `Rest` key's `url`, `headers` or `body` resolves to another stored key's raw value.
+
+### Fixed
+- Placeholder warnings (e.g. `No value provided for <name>`) were written to stdout, so `$(o key -r)` captured them along with the value. They now go to stderr.
+- A named placeholder value containing `$` substitution tokens was mangled (e.g. `pa$$word` became `pa$word`, `$0` re-inserted the `<name>` token); values are now inserted literally.
+
 ## [1.1.1] - 2026-07-15
 
 ### Fixed

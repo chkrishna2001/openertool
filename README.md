@@ -62,6 +62,7 @@ Once installed, use the shorthand command `o` to access the tool.
   - `EmailTemplate`: Sends templated emails via your system mail client, SMTP, or Microsoft Graph.
   - `CalendarEvent`: Creates calendar invites, including relative start times like "tomorrow 10am".
   - `Totp`: Generates live 6-digit 2FA codes, compatible with Google Authenticator/Authy.
+  - `Template`: Text with `{0}` / `<name>` placeholders, filled from your arguments and copied to your clipboard.
 
 ## 📖 Usage
 
@@ -243,6 +244,23 @@ o github -r         # prints the current code instead
 Because a compromised vault would then expose both a password *and* its 2FA code together,
 this is best suited to lower-stakes accounts (internal tools, staging) rather than the
 account tied to the vault's own recovery (e.g. your primary email or GitHub).
+
+#### 9. Text Templates (`Template`)
+Text with placeholders: snippets, commit messages, canned replies, commands. Uses the same
+placeholders as `WebPath`: `{0}`, `{1}`… take positional arguments, and `<name>` takes a
+`name=value` argument, the next remaining positional argument, or a default param, with URL
+aliases applied. `{{key:name}}` inserts another stored key's value, as in `Rest` keys.
+
+```bash
+o add greet "Hi <name>, ticket {0} is ready" -t Template
+o greet ABC-1 name=Sam       # copies "Hi Sam, ticket ABC-1 is ready"
+o greet ABC-1 Sam -r         # prints it instead
+```
+
+Only an exact `{0}` is a placeholder. `{{0}}`, `{0:x}`, JSON braces and code braces stay
+exactly as written, so the value can hold JSON or code. An unresolved placeholder is left
+as-is with a warning on stderr, so `$(o greet ... -r)` captures only the text.
+`Data`, `JsonData` and `Totp` values are never templated; they always come back exactly as stored.
 
 ## 🔄 Git-Based Vault Sync
 

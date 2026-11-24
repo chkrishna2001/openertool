@@ -108,6 +108,9 @@ public class ActionService : IActionService
             case OKeyType.Totp:
                 HandleTotp(key, returnValue, forceCopy);
                 break;
+            case OKeyType.Template:
+                HandleTemplate(key, args, returnValue);
+                break;
             default:
                 AnsiConsole.MarkupLine("[red]Unknown key type.[/]");
                 break;
@@ -125,10 +128,7 @@ public class ActionService : IActionService
             key.UrlAliases,
             key.DefaultParams);
 
-        foreach (var warning in resolved.Warnings)
-        {
-            AnsiConsole.MarkupLine($"[yellow]Warning:[/] {warning}");
-        }
+        WriteWarnings(resolved.Warnings);
 
         if (returnValue)
         {
@@ -143,6 +143,61 @@ public class ActionService : IActionService
         }
 
         OpenUrl(resolved.Value);
+    }
+
+    private void HandleTemplate(OKey key, string[] args, bool returnValue = false)
+    {
+        var resolved = ResolveTemplate(key, args, _configService?.GetConfig(), _storageService?.GetKeys());
+        WriteWarnings(resolved.Warnings);
+
+        if (returnValue)
+        {
+            Console.WriteLine(resolved.Value);
+            return;
+        }
+
+        TryCopyToClipboard(resolved.Value, "Template");
+    }
+
+    /// <summary>
+    /// Template keys: {0} positional and &lt;name&gt; named placeholders (with URL aliases and
+    /// default params, same as WebPath), then {{key:name}} references to other stored keys.
+    /// Placeholders resolve first so a referenced secret's own text is never treated as a
+    /// placeholder. {{0}} is not a placeholder - it stays literal.
+    /// </summary>
+    internal static UrlTemplateResolutionResult ResolveTemplate(OKey key, string[]? args, OpenerConfig? conf, List<OKey>? vaultKeys)
+    {
+        var resolved = UrlTemplateResolver.ResolveText(
+            key.Value,
+            args,
+            conf?.GlobalUrlAliases,
+            conf?.GlobalDefaultParams,
+            key.UrlAliases,
+            key.DefaultParams);
+
+        resolved.Value = ResolveKeyReferences(resolved.Value, vaultKeys, resolved.Warnings);
+        return resolved;
+    }
+
+    /// <summary>
+    /// Warnings go to stderr so `$(o key -r)` captures only the value.
+    /// </summary>
+    private static readonly IAnsiConsole StdErr = AnsiConsole.Create(new AnsiConsoleSettings
+    {
+        Out = new AnsiConsoleOutput(Console.Error)
+    });
+
+    private static void WriteWarnings(IEnumerable<string> warnings)
+    {
+        foreach (var warning in warnings)
+        {
+            WriteWarning(warning);
+        }
+    }
+
+    private static void WriteWarning(string warning)
+    {
+        StdErr.MarkupLine($"[yellow]Warning:[/] {Markup.Escape(warning)}");
     }
 
     private void HandleLocalPath(OKey key, string[] args, bool returnValue = false, bool forceCopy = false, bool elevated = false)
@@ -387,10 +442,7 @@ public class ActionService : IActionService
                     key.UrlAliases,
                     key.DefaultParams);
 
-                foreach (var warning in resolved.Warnings)
-                {
-                    AnsiConsole.MarkupLine($"[yellow]Warning:[/] {warning}");
-                }
+                WriteWarnings(resolved.Warnings);
 
                 var url = resolved.Value;
                 var method = string.IsNullOrWhiteSpace(step.Method) ? "GET" : step.Method;
@@ -501,7 +553,7 @@ public class ActionService : IActionService
     /// Rest key pull in a secret (e.g. a Data key holding an API token) instead of inlining
     /// it. Unresolvable references warn and are left literal, same as a failed Extract.
     /// </summary>
-    private static string ResolveKeyReferences(string? input, List<OKey>? vaultKeys)
+    private static string ResolveKeyReferences(string? input, List<OKey>? vaultKeys, List<string>? warnings = null)
     {
         if (string.IsNullOrEmpty(input) || vaultKeys == null || !input.Contains("{{key:"))
         {
@@ -514,7 +566,9 @@ public class ActionService : IActionService
             var referenced = vaultKeys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (referenced == null)
             {
-                AnsiConsole.MarkupLine($"[yellow]Warning:[/] Could not resolve '{{{{key:{name}}}}}' - no key named '{name}' found.");
+                var warning = $"Could not resolve '{{{{key:{name}}}}}' - no key named '{name}' found.";
+                if (warnings != null) warnings.Add(warning);
+                else WriteWarning(warning);
                 return match.Value;
             }
             return referenced.Value;

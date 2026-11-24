@@ -17,6 +17,7 @@ public class AddCommand : Command
                      "  o add jira \"https://jira.company.com/browse/{0}\" -t WebPath\n" +
                      "  o add api \"https://nvidia<env>.domain.com/<region>/<user>\" -t WebPath\n" +
                      "  o add github JBSWY3DPEHPK3PXP -t Totp   # base32 secret, or paste a full otpauth:// URI\n" +
+                     "  o add greet \"Hi <name>, ticket {0} is ready\" -t Template   # o greet ABC-1 name=Sam\n" +
                      "  o add api '{ \"steps\": [ { \"url\": \"...\", \"extract\": { \"token\": \"access_token\" } }, { \"url\": \"...\", \"headers\": { \"Authorization\": \"Bearer {{token}}\" } } ] }' -t Rest\n" +
                      "  o config set-url-aliases env d=-dev u=-uat p=\n" +
                      "  o config set-default-params user kchirravuri")
@@ -24,8 +25,8 @@ public class AddCommand : Command
         var _console = console ?? AnsiConsole.Console;
 
         var keyArg = new Argument<string>("key", "Unique key name, for example jira or api.");
-        var valArg = new Argument<string>("value", "Stored value. Meaning depends on --type: URL template, local path, data, JSON, REST JSON, or a TOTP base32 secret / otpauth:// URI.");
-        var typeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Key type: WebPath, LocalPath, Data, JsonData, Rest, EmailTemplate, CalendarEvent, or Totp.");
+        var valArg = new Argument<string>("value", "Stored value. Meaning depends on --type: URL template, local path, data, JSON, REST JSON, a TOTP base32 secret / otpauth:// URI, or text with {0}/<name> placeholders.");
+        var typeOpt = new Option<OKeyType>(new[] { "-t", "--type" }, () => OKeyType.Data, "Key type: WebPath, LocalPath, Data, JsonData, Rest, EmailTemplate, CalendarEvent, Totp, or Template.");
         var urlAliasesOpt = new Option<string?>(new[] { "--url-aliases" }, "Per-key alias map JSON. " + CommandHelpers.UrlAliasJsonHelp);
         var defaultParamsOpt = new Option<string?>(new[] { "--default-params" }, "Per-key default params JSON. " + CommandHelpers.DefaultParamsJsonHelp);
         var elevatedOpt = new Option<bool>(new[] { "-e", "--elevated" }, "Execute the key in elevated mode (admin/sudo)");

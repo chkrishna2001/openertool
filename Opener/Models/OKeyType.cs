@@ -9,5 +9,6 @@ public enum OKeyType
     Rest = 5,
     EmailTemplate = 6,
     CalendarEvent = 7,
-    Totp = 8
+    Totp = 8,
+    Template = 9
 }

@@ -533,6 +533,7 @@ public static class DocsHtmlGenerator
                 <li><a href="#email" class="nav-link">Email Templates</a></li>
                 <li><a href="#calendar" class="nav-link">Calendar Events</a></li>
                 <li><a href="#totp" class="nav-link">Two-Factor Codes (Totp)</a></li>
+                <li><a href="#template" class="nav-link">Text Templates (Template)</a></li>
             </ul>
 
             <div class="nav-section-title">Productivity</div>
@@ -926,6 +927,16 @@ o github -r         # prints the current code instead</code></pre>
                 <div class="callout-title">Something to consider</div>
                 <p>Storing a TOTP seed alongside your other secrets means a compromised vault exposes both a password <em>and</em> its 2FA code together. This is best suited to lower-stakes accounts (internal tools, staging environments) rather than the account tied to the vault's own recovery, like your primary email or GitHub.</p>
             </div>
+        </section>
+
+        <!-- TEMPLATE -->
+        <section id="template">
+            <h2>Text Templates (<code>Template</code>)</h2>
+            <p>Text with placeholders: snippets, commit messages, canned replies, commands. Uses the same placeholders as <code>WebPath</code>: <code>{0}</code>, <code>{1}</code>… take positional arguments, and <code>&lt;name&gt;</code> takes a <code>name=value</code> argument, the next remaining positional argument, or a default param, with URL aliases applied. <code>{{key:name}}</code> inserts another stored key's value, as in <code>Rest</code> keys. The result is copied to your clipboard, or printed with <code>-r</code>.</p>
+            <pre><code>o add greet "Hi &lt;name&gt;, ticket {0} is ready" -t Template
+o greet ABC-1 name=Sam       # copies "Hi Sam, ticket ABC-1 is ready"
+o greet ABC-1 Sam -r         # prints it instead</code></pre>
+            <p>Only an exact <code>{0}</code> is a placeholder. <code>{{0}}</code>, <code>{0:x}</code>, JSON braces and code braces stay exactly as written. An unresolved placeholder is left as-is with a warning on stderr, so <code>$(o greet ... -r)</code> captures only the text. <code>Data</code>, <code>JsonData</code> and <code>Totp</code> values are never templated.</p>
         </section>
 
         <!-- INTERACTIVE PICKER -->

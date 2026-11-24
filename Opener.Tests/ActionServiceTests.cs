@@ -392,4 +392,37 @@ public class ActionServiceTests
         Assert.True(captured!.Headers.TryGetValues("Authorization", out var values));
         Assert.Equal("Bearer {{key:missing}}", values!.First());
     }
+
+    [Fact]
+    public void ResolveTemplate_ResolvesPlaceholdersThenKeyReferences()
+    {
+        var vault = new List<OKey>
+        {
+            // A referenced value containing placeholder-looking text must come through raw.
+            new OKey { Key = "sig", KeyType = OKeyType.Data, Value = "p<ss>{0}" }
+        };
+        var key = new OKey
+        {
+            Key = "greet",
+            KeyType = OKeyType.Template,
+            Value = "Hi <name>, ticket {0}. {{0}} -- {{key:sig}}"
+        };
+
+        var result = ActionService.ResolveTemplate(key, new[] { "ABC-1", "name=Sam" }, new OpenerConfig(), vault);
+
+        Assert.Equal("Hi Sam, ticket ABC-1. {{0}} -- p<ss>{0}", result.Value);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void ResolveTemplate_MissingKeyReference_WarnsAndLeavesLiteral()
+    {
+        var key = new OKey { Key = "t", KeyType = OKeyType.Template, Value = "token={{key:missing}}" };
+
+        var result = ActionService.ResolveTemplate(key, new string[0], null, new List<OKey>());
+
+        Assert.Equal("token={{key:missing}}", result.Value);
+        Assert.Single(result.Warnings);
+    }
 }
+
