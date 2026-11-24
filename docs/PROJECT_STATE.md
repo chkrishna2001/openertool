@@ -1,6 +1,6 @@
 # Project State
 
-Last updated 2026-11-24 by "Rest single-pass substitution"
+Last updated 2026-11-24 by "Release 1.2.0"
 
 ## Purpose & shape
 - `o` (Opener): a cross-platform CLI key vault that also acts on what it stores (open URLs, run local paths, copy secrets, call REST APIs, send email, create calendar events, generate TOTP codes, fill text templates).
@@ -24,8 +24,9 @@ Last updated 2026-11-24 by "Rest single-pass substitution"
 - Optional: placeholders for LocalPath (placeholders consume args, the rest pass through as argv).
 
 ## Last session
-- Rest substitution: replaced key-refs-then-vars-then-placeholders with one tokenizing pass over the original url/header/body text. A referenced secret containing `{0}`, `<x>`, `{{` or `{{token}}` now reaches the request unchanged; an extracted value containing `{{key:...}}` is not resolved. README, `o docs` page and CHANGELOG updated.
-- Verified: all 130 unit tests pass on net8.0 and net10.0 (4 new in `ActionServiceTests`). No CLI smoke test (Rest needs a live server; covered by mocked-sender tests). Not pushed; AOT publish not run.
+- Released 1.2.0: `Template` key type, stderr warnings, `$` fix, and Rest single-pass substitution (one tokenizing pass over url/header/body text; a referenced secret reaches the request unchanged and an extracted value containing `{{key:...}}` is not resolved).
+- Verified: all 130 unit tests pass on net8.0 and net10.0 on merged main. Version bumped in `Opener.csproj`, CHANGELOG section `[1.2.0]`, tag `v1.2.0` pushed (triggers NuGet publish, AOT binaries, GitHub release).
+- Release steps: bump `<Version>` in `Opener/Opener.csproj`, rename `[Unreleased]` to `## [x.y.z] - date` in CHANGELOG (publish.yml reads release notes from that heading), push main, then push tag `vx.y.z`.
 
 ## Next task
 - Switch `ActionService.ResolveTemplate` to `UrlTemplateResolver.ResolveSinglePass` (placeholders on, `{{key:}}` only); done when a test shows a Template CLI arg containing `<x>` / `{{key:x}}` stays literal and existing Template tests pass.
