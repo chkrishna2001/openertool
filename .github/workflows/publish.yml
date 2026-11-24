@@ -131,22 +131,27 @@ jobs:
       if: matrix.rid == 'linux-arm64'
       run: |
         sudo dpkg --add-architecture arm64
-        
+
+        # arm64 packages must come from the same Ubuntu release as the runner's amd64 ones
+        # (multi-arch packages like zlib1g need identical versions), so never hard-code it:
+        # ubuntu-latest moved from noble (24.04) to resolute (26.04) and broke v1.2.0.
+        CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+        echo "Runner Ubuntu codename: $CODENAME"
+
         # Configure APT to use ports.ubuntu.com for arm64 packages
         if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
           sudo sed -i 's/Types: deb/Types: deb\nArchitectures: amd64/g' /etc/apt/sources.list.d/ubuntu.sources
           echo "Types: deb" | sudo tee /etc/apt/sources.list.d/arm64-ports.sources
           echo "URIs: http://ports.ubuntu.com/ubuntu-ports" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
-          echo "Suites: noble noble-updates noble-backports noble-security" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
+          echo "Suites: $CODENAME $CODENAME-updates $CODENAME-backports $CODENAME-security" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
           echo "Components: main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
           echo "Architectures: arm64" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
         else
           sudo sed -i 's/deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
           sudo sed -i 's/deb-src http/deb-src [arch=amd64] http/g' /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-backports main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ noble-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          for suite in "$CODENAME" "$CODENAME-updates" "$CODENAME-backports" "$CODENAME-security"; do
+            echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $suite main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
+          done
         fi
         
         sudo apt-get update

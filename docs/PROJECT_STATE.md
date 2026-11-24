@@ -39,3 +39,5 @@ Last updated 2026-11-24 by "Release 1.2.0"
 - `OKeyType` values are persisted as numbers: only append new members, never renumber.
 - Warnings must go to stderr (`ActionService.WriteWarning`); stdout is the value for `-r` consumers (scripts, agents).
 - CLI smoke tests must set `OPENER_HOME` and `OPENER_DATA_DIR` to a sandbox, or they write to the real vault.
+- linux-arm64 AOT in `publish.yml` cross-compiles on an amd64 runner; its arm64 apt suites must match the runner's Ubuntu codename (read from `/etc/os-release`), never a hard-coded one. Binary builds only run on `v*` tags, so a workflow break shows up only at release time.
+- Docs deploy sometimes fails with "No artifacts named github-pages" right after a successful upload; start a fresh run (`gh workflow run deploy-docs.yml --ref main`), since re-running the same run then finds two artifacts.
