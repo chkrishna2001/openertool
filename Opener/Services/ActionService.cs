@@ -434,14 +434,7 @@ public class ActionService : IActionService
                 var step = steps[i];
                 var stepLabel = steps.Count > 1 ? $"({i + 1}/{steps.Count}) " : string.Empty;
 
-                var resolved = UrlTemplateResolver.Resolve(
-                    SubstituteVars(ResolveKeyReferences(step.Url, vaultKeys), vars),
-                    args,
-                    conf?.GlobalUrlAliases,
-                    conf?.GlobalDefaultParams,
-                    key.UrlAliases,
-                    key.DefaultParams);
-
+                var resolved = ResolveRestText(step.Url, args, conf, key, vars, vaultKeys, placeholders: true);
                 WriteWarnings(resolved.Warnings);
 
                 var url = resolved.Value;
@@ -455,7 +448,9 @@ public class ActionService : IActionService
                 {
                     foreach (var (headerName, headerValue) in step.Headers)
                     {
-                        var resolvedHeaderValue = SubstituteVars(ResolveKeyReferences(headerValue, vaultKeys), vars);
+                        var resolvedHeader = ResolveRestText(headerValue, args, conf, key, vars, vaultKeys, placeholders: false);
+                        WriteWarnings(resolvedHeader.Warnings);
+                        var resolvedHeaderValue = resolvedHeader.Value;
                         if (headerName.Equals("Content-Type", StringComparison.OrdinalIgnoreCase))
                         {
                             contentType = resolvedHeaderValue;
@@ -469,7 +464,9 @@ public class ActionService : IActionService
 
                 if (!string.IsNullOrEmpty(step.Body))
                 {
-                    request.Content = new StringContent(SubstituteVars(ResolveKeyReferences(step.Body, vaultKeys), vars), Encoding.UTF8, contentType ?? "application/json");
+                    var resolvedBody = ResolveRestText(step.Body, args, conf, key, vars, vaultKeys, placeholders: false);
+                    WriteWarnings(resolvedBody.Warnings);
+                    request.Content = new StringContent(resolvedBody.Value, Encoding.UTF8, contentType ?? "application/json");
                 }
 
                 var result = await _httpRequestSender.SendAsync(request);
@@ -532,28 +529,71 @@ public class ActionService : IActionService
         return single == null ? null : new List<RestData> { single };
     }
 
-    private static string SubstituteVars(string? input, Dictionary<string, string> vars)
+    /// <summary>
+    /// Rest url/headers/body: one pass over the text as written in the key, so every inserted
+    /// value is final. {{key:name}} inserts another stored key's raw Value, {{varName}} a value
+    /// extracted from an earlier step's response, and (url only) {0} / &lt;name&gt; take CLI args
+    /// with aliases/defaults. Extracted values come from the server, so they must never be
+    /// rescanned: a response containing "{{key:x}}" would otherwise pull vault secret x into the
+    /// next request. Headers/body get no {0} / &lt;name&gt; (XML bodies are full of &lt;tag&gt;).
+    /// </summary>
+    internal static UrlTemplateResolutionResult ResolveRestText(
+        string? text,
+        string[]? args,
+        OpenerConfig? conf,
+        OKey key,
+        Dictionary<string, string> vars,
+        List<OKey>? vaultKeys,
+        bool placeholders)
     {
-        if (string.IsNullOrEmpty(input) || vars.Count == 0)
+        var warnings = new List<string>();
+        var resolved = UrlTemplateResolver.ResolveSinglePass(
+            text,
+            args,
+            conf?.GlobalUrlAliases,
+            conf?.GlobalDefaultParams,
+            key.UrlAliases,
+            key.DefaultParams,
+            placeholders,
+            inner =>
+            {
+                if (inner.StartsWith("key:", StringComparison.Ordinal))
+                {
+                    return LookupKeyReference(inner.Substring("key:".Length), vaultKeys, warnings);
+                }
+
+                return vars.TryGetValue(inner, out var value) ? value : null;
+            });
+
+        resolved.Warnings.AddRange(warnings);
+        return resolved;
+    }
+
+    private static string? LookupKeyReference(string name, List<OKey>? vaultKeys, List<string> warnings)
+    {
+        if (vaultKeys == null)
         {
-            return input ?? string.Empty;
+            return null;
         }
 
-        foreach (var (name, value) in vars)
+        var referenced = vaultKeys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (referenced == null)
         {
-            input = input.Replace("{{" + name + "}}", value);
+            warnings.Add($"Could not resolve '{{{{key:{name}}}}}' - no key named '{name}' found.");
+            return null;
         }
-        return input;
+
+        return referenced.Value;
     }
 
     private static readonly Regex KeyReferencePattern = new(@"\{\{key:([^}]+)\}\}", RegexOptions.Compiled);
 
     /// <summary>
-    /// Resolves {{key:name}} references to another stored Opener key's raw Value - lets a
-    /// Rest key pull in a secret (e.g. a Data key holding an API token) instead of inlining
-    /// it. Unresolvable references warn and are left literal, same as a failed Extract.
+    /// Template keys: resolves {{key:name}} references to another stored Opener key's raw Value
+    /// (e.g. a Data key holding an API token) instead of inlining it. Unresolvable references
+    /// warn and are left literal. Rest keys use <see cref="ResolveRestText"/> instead.
     /// </summary>
-    private static string ResolveKeyReferences(string? input, List<OKey>? vaultKeys, List<string>? warnings = null)
+    private static string ResolveKeyReferences(string? input, List<OKey>? vaultKeys, List<string> warnings)
     {
         if (string.IsNullOrEmpty(input) || vaultKeys == null || !input.Contains("{{key:"))
         {
@@ -561,18 +601,7 @@ public class ActionService : IActionService
         }
 
         return KeyReferencePattern.Replace(input, match =>
-        {
-            var name = match.Groups[1].Value;
-            var referenced = vaultKeys.FirstOrDefault(k => k?.Key != null && k.Key.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (referenced == null)
-            {
-                var warning = $"Could not resolve '{{{{key:{name}}}}}' - no key named '{name}' found.";
-                if (warnings != null) warnings.Add(warning);
-                else WriteWarning(warning);
-                return match.Value;
-            }
-            return referenced.Value;
-        });
+            LookupKeyReference(match.Groups[1].Value, vaultKeys, warnings) ?? match.Value);
     }
 
     private async Task HandleEmailTemplate(OKey key, string[] args, bool returnValue = false, bool forceCopy = false)

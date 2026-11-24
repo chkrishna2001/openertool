@@ -394,6 +394,165 @@ public class ActionServiceTests
     }
 
     [Fact]
+    public async Task HandleRest_KeyReference_SecretWithPlaceholderText_ReachesRequestUnchanged()
+    {
+        // The referenced secret is inserted after the template is scanned, so its own {0},
+        // <x>, stray {{ and {{token}} must not take CLI args, defaults, extracted vars, or
+        // break formatting.
+        const string secret = "ab{0}cd<x>ef{{gh{{token}}ij";
+        var senderMock = new Mock<IHttpRequestSender>();
+        var capturedRequests = new List<HttpRequestMessage>();
+        var capturedBodies = new List<string>();
+        var responses = new Queue<HttpCallResult>(new[]
+        {
+            new HttpCallResult(200, true, "{\"access_token\":\"tok-1\"}"),
+            new HttpCallResult(200, true, "{}")
+        });
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Returns<HttpRequestMessage>(req =>
+            {
+                capturedRequests.Add(req);
+                capturedBodies.Add(req.Content?.ReadAsStringAsync().Result ?? string.Empty);
+                return Task.FromResult(responses.Dequeue());
+            });
+
+        var storageServiceMock = new Mock<IStorageService>();
+        storageServiceMock.Setup(s => s.GetKeys()).Returns(new List<OKey>
+        {
+            new OKey { Key = "githubtoken", KeyType = OKeyType.Data, Value = secret }
+        });
+
+        var service = new ActionService(storageService: storageServiceMock.Object, httpRequestSender: senderMock.Object);
+        var chainJson = JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["steps"] = new object[]
+            {
+                new Dictionary<string, object>
+                {
+                    ["url"] = "https://api.example.com/login",
+                    ["method"] = "POST",
+                    ["extract"] = new Dictionary<string, string> { ["token"] = "access_token" }
+                },
+                new Dictionary<string, object>
+                {
+                    ["url"] = "https://api.example.com/users/{0}/<x>",
+                    ["method"] = "POST",
+                    ["headers"] = new Dictionary<string, string>
+                    {
+                        ["X-Secret"] = "{{key:githubtoken}}",
+                        ["Authorization"] = "Bearer {{token}}"
+                    },
+                    ["body"] = "{\"s\":\"{{key:githubtoken}}\",\"t\":\"{{token}}\"}"
+                }
+            }
+        });
+        var key = new OKey
+        {
+            Key = "chain",
+            KeyType = OKeyType.Rest,
+            Value = chainJson,
+            DefaultParams = new Dictionary<string, string> { ["x"] = "dflt" }
+        };
+
+        await service.ExecuteAsync(key, new[] { "42" });
+
+        Assert.Equal(2, capturedRequests.Count);
+        var second = capturedRequests[1];
+        Assert.Equal("https://api.example.com/users/42/dflt", second.RequestUri!.ToString());
+        Assert.True(second.Headers.TryGetValues("X-Secret", out var secretValues));
+        Assert.Equal(secret, secretValues!.First());
+        Assert.True(second.Headers.TryGetValues("Authorization", out var authValues));
+        Assert.Equal("Bearer tok-1", authValues!.First());
+        Assert.Equal("{\"s\":\"" + secret + "\",\"t\":\"tok-1\"}", capturedBodies[1]);
+    }
+
+    [Fact]
+    public async Task HandleRest_Chain_ExtractedValueContainingKeyReference_IsNotResolved()
+    {
+        // Extracted vars come from server responses. A malicious response must not be able to
+        // make the next request carry a vault secret by returning "{{key:githubtoken}}".
+        const string injected = "{{key:githubtoken}}";
+        var senderMock = new Mock<IHttpRequestSender>();
+        var capturedRequests = new List<HttpRequestMessage>();
+        var capturedBodies = new List<string>();
+        var responses = new Queue<HttpCallResult>(new[]
+        {
+            new HttpCallResult(200, true, "{\"access_token\":\"" + injected + "\",\"id\":\"<x>{0}\"}"),
+            new HttpCallResult(200, true, "{}")
+        });
+        senderMock.Setup(s => s.SendAsync(It.IsAny<HttpRequestMessage>()))
+            .Returns<HttpRequestMessage>(req =>
+            {
+                capturedRequests.Add(req);
+                capturedBodies.Add(req.Content?.ReadAsStringAsync().Result ?? string.Empty);
+                return Task.FromResult(responses.Dequeue());
+            });
+
+        var storageServiceMock = new Mock<IStorageService>();
+        storageServiceMock.Setup(s => s.GetKeys()).Returns(new List<OKey>
+        {
+            new OKey { Key = "githubtoken", KeyType = OKeyType.Data, Value = "secret-abc-123" }
+        });
+
+        var service = new ActionService(storageService: storageServiceMock.Object, httpRequestSender: senderMock.Object);
+        var chainJson = "{\"steps\":[" +
+            "{\"url\":\"https://api.example.com/login\",\"method\":\"POST\",\"extract\":{\"token\":\"access_token\",\"id\":\"id\"}}," +
+            "{\"url\":\"https://api.example.com/items?q={{token}}&id={{id}}\",\"method\":\"POST\"," +
+            "\"headers\":{\"Authorization\":\"Bearer {{token}}\"},\"body\":\"{{token}}\"}" +
+            "]}";
+        var key = new OKey { Key = "chain", KeyType = OKeyType.Rest, Value = chainJson };
+
+        await service.ExecuteAsync(key, new[] { "argval" });
+
+        Assert.Equal(2, capturedRequests.Count);
+        var second = capturedRequests[1];
+        var url = second.RequestUri!.ToString();
+        Assert.DoesNotContain("secret-abc-123", url);
+        Assert.DoesNotContain("argval", url);
+        Assert.True(second.Headers.TryGetValues("Authorization", out var authValues));
+        Assert.Equal("Bearer " + injected, authValues!.First());
+        Assert.Equal(injected, capturedBodies[1]);
+    }
+
+    [Fact]
+    public void ResolveRestText_UrlPlaceholders_AliasesDefaultsAndVars()
+    {
+        var conf = new OpenerConfig
+        {
+            GlobalUrlAliases = new Dictionary<string, Dictionary<string, string>>
+            {
+                ["env"] = new Dictionary<string, string> { ["p"] = "prod.example.com" }
+            }
+        };
+        var key = new OKey
+        {
+            Key = "api",
+            KeyType = OKeyType.Rest,
+            DefaultParams = new Dictionary<string, string> { ["region"] = "eu" }
+        };
+        var vars = new Dictionary<string, string>(System.StringComparer.OrdinalIgnoreCase) { ["id"] = "7" };
+
+        var result = ActionService.ResolveRestText(
+            "https://<env>/{0}/<region>/{{id}}/{{missing}}", new[] { "users", "p" }, conf, key, vars, new List<OKey>(), placeholders: true);
+
+        Assert.Equal("https://prod.example.com/users/eu/7/{{missing}}", result.Value);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void ResolveRestText_HeadersAndBody_LeavePlaceholdersLiteral()
+    {
+        var key = new OKey { Key = "api", KeyType = OKeyType.Rest };
+        var vars = new Dictionary<string, string>();
+
+        var result = ActionService.ResolveRestText(
+            "<user>{0}</user>", new[] { "a" }, null, key, vars, new List<OKey>(), placeholders: false);
+
+        Assert.Equal("<user>{0}</user>", result.Value);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
     public void ResolveTemplate_ResolvesPlaceholdersThenKeyReferences()
     {
         var vault = new List<OKey>

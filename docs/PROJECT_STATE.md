@@ -1,6 +1,6 @@
 # Project State
 
-Last updated 2026-11-24 by "Add Template key type"
+Last updated 2026-11-24 by "Rest single-pass substitution"
 
 ## Purpose & shape
 - `o` (Opener): a cross-platform CLI key vault that also acts on what it stores (open URLs, run local paths, copy secrets, call REST APIs, send email, create calendar events, generate TOTP codes, fill text templates).
@@ -13,26 +13,28 @@ Last updated 2026-11-24 by "Add Template key type"
 - Key types: WebPath, LocalPath (incl. elevated, `.ps1` via PowerShell), Data, JsonData, Rest (headers, multi-step chains with `extract`), EmailTemplate, CalendarEvent, Totp, Template.
 - Placeholders (`UrlTemplateResolver`): `{0}` positional and `<name>` named with global/per-key URL aliases and default params; used by WebPath, Rest url, EmailTemplate, CalendarEvent, Template.
 - `{{key:name}}` references to another stored key in Rest (url/headers/body) and Template.
+- Rest url/headers/body resolve in one pass (`UrlTemplateResolver.ResolveSinglePass` via `ActionService.ResolveRestText`): args, `<name>` values, key references and extracted vars are inserted once and never rescanned.
 - Interactive picker (`o` with no args), git-based encrypted vault sync with opt-in auto-sync, backups, `o docs` generated HTML page.
 
 ## In progress
 - Nothing.
 
 ## Remaining
-- Rest resolves `{{key:name}}` before placeholders, so a referenced secret containing `{0}`/`<x>` text can be altered; Template already does placeholders first.
-- Rest `headers`/`body` get `{{var}}`/`{{key:}}` but not `{0}`/`<name>` args.
+- Template and WebPath still resolve in two passes (`{0}` then `<name>`), so a CLI arg containing `<x>` text gets rescanned; Template should move to `ResolveSinglePass`.
 - Optional: placeholders for LocalPath (placeholders consume args, the rest pass through as argv).
 
 ## Last session
-- Added `Template` key type (`OKeyType.Template = 9`) via `UrlTemplateResolver.ResolveText` (strict `{N}` match: `{{0}}`, `{0:x}`, JSON/code braces stay literal). Placeholder warnings now go to stderr so `$(o key -r)` is clean. Fixed `$` in named values being treated as regex substitution tokens.
-- Verified: all 126 unit tests pass on net8.0 and net10.0; sandboxed CLI smoke test of add/-r/stderr. Committed in 30963b4 (not pushed; AOT publish not run).
+- Rest substitution: replaced key-refs-then-vars-then-placeholders with one tokenizing pass over the original url/header/body text. A referenced secret containing `{0}`, `<x>`, `{{` or `{{token}}` now reaches the request unchanged; an extracted value containing `{{key:...}}` is not resolved. README, `o docs` page and CHANGELOG updated.
+- Verified: all 130 unit tests pass on net8.0 and net10.0 (4 new in `ActionServiceTests`). No CLI smoke test (Rest needs a live server; covered by mocked-sender tests). Not pushed; AOT publish not run.
 
 ## Next task
-- Decide whether Rest should resolve placeholders before `{{key:name}}` (see Remaining); done when the order is changed or documented and a test covers a secret containing `<x>`.
+- Switch `ActionService.ResolveTemplate` to `UrlTemplateResolver.ResolveSinglePass` (placeholders on, `{{key:}}` only); done when a test shows a Template CLI arg containing `<x>` / `{{key:x}}` stays literal and existing Template tests pass.
 
 ## Decisions & gotchas
 - Data, JsonData and Totp are never templated: stored value comes back byte-for-byte (secrets can contain `{0}` / `<x>`; no escape syntax exists).
 - `Resolve` (WebPath etc.) uses `string.Format` for `{N}`: stray braces throw and fall back with a warning, `{{`/`}}` collapse. `ResolveText` (Template) avoids `string.Format` for that reason.
+- Values from Rest `extract` come from the server: they must never be rescanned for `{{key:name}}`, or a response could exfiltrate any vault secret into the next request. Never "fix" ordering by swapping passes; keep one pass over the original text.
+- Rest `headers`/`body` deliberately get no `{0}`/`<name>` (XML bodies are full of `<tag>`); only `{{key:}}`/`{{var}}`. In a Rest url only an exact `{N}` is a placeholder (no `string.Format`).
 - `OKeyType` values are persisted as numbers: only append new members, never renumber.
 - Warnings must go to stderr (`ActionService.WriteWarning`); stdout is the value for `-r` consumers (scripts, agents).
 - CLI smoke tests must set `OPENER_HOME` and `OPENER_DATA_DIR` to a sandbox, or they write to the real vault.

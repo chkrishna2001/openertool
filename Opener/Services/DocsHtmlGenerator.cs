@@ -869,6 +869,7 @@ o hosts  # Opens hosts in notepad as administrator</code></pre>
     }
   ]
 }</code></pre>
+            <p><code>{0}</code> and <code>&lt;name&gt;</code> arguments work in <code>url</code> only; <code>headers</code> and <code>body</code> leave them as written. <code>{{key:name}}</code> and <code>{{varName}}</code> work in all three. Every value is inserted exactly as-is and never re-scanned, so a token containing <code>{0}</code> or <code>&lt;x&gt;</code> reaches the server unchanged, and a response that returns <code>{{key:...}}</code> text cannot pull another vault key into the next request.</p>
         </section>
 
         <!-- EMAIL TEMPLATES -->
