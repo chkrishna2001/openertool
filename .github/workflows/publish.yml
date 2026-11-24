@@ -95,7 +95,10 @@ jobs:
           - os: ubuntu-latest
             rid: linux-x64
             archive_name: opener-linux-x64.tar.gz
-          - os: ubuntu-latest
+          # Native arm64 runner (free for public repos). Cross-compiling from an amd64
+          # runner needed multi-arch apt sources pinned to the runner's Ubuntu release and
+          # still broke whenever the image shipped newer gcc/binutils than the archive.
+          - os: ubuntu-24.04-arm
             rid: linux-arm64
             archive_name: opener-linux-arm64.tar.gz
           - os: windows-latest
@@ -121,41 +124,11 @@ jobs:
           8.0.x
           10.0.x
 
-    - name: Install dependencies (Linux x64)
-      if: matrix.rid == 'linux-x64'
+    - name: Install dependencies (Linux)
+      if: runner.os == 'Linux'
       run: |
         sudo apt-get update
         sudo apt-get install -y clang zlib1g-dev
-
-    - name: Install dependencies (Linux arm64)
-      if: matrix.rid == 'linux-arm64'
-      run: |
-        sudo dpkg --add-architecture arm64
-
-        # arm64 packages must come from the same Ubuntu release as the runner's amd64 ones
-        # (multi-arch packages like zlib1g need identical versions), so never hard-code it:
-        # ubuntu-latest moved from noble (24.04) to resolute (26.04) and broke v1.2.0.
-        CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
-        echo "Runner Ubuntu codename: $CODENAME"
-
-        # Configure APT to use ports.ubuntu.com for arm64 packages
-        if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
-          sudo sed -i 's/Types: deb/Types: deb\nArchitectures: amd64/g' /etc/apt/sources.list.d/ubuntu.sources
-          echo "Types: deb" | sudo tee /etc/apt/sources.list.d/arm64-ports.sources
-          echo "URIs: http://ports.ubuntu.com/ubuntu-ports" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
-          echo "Suites: $CODENAME $CODENAME-updates $CODENAME-backports $CODENAME-security" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
-          echo "Components: main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
-          echo "Architectures: arm64" | sudo tee -a /etc/apt/sources.list.d/arm64-ports.sources
-        else
-          sudo sed -i 's/deb http/deb [arch=amd64] http/g' /etc/apt/sources.list
-          sudo sed -i 's/deb-src http/deb-src [arch=amd64] http/g' /etc/apt/sources.list
-          for suite in "$CODENAME" "$CODENAME-updates" "$CODENAME-backports" "$CODENAME-security"; do
-            echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports/ $suite main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list
-          done
-        fi
-        
-        sudo apt-get update
-        sudo apt-get install -y clang llvm binutils-aarch64-linux-gnu gcc-aarch64-linux-gnu zlib1g-dev:arm64
 
     - name: Install dependencies (macOS)
       if: runner.os == 'macOS'
@@ -164,18 +137,12 @@ jobs:
     - name: Build AOT binary
       shell: pwsh
       run: |
-        $extraParams = @()
-        if ("${{ matrix.rid }}" -eq "linux-arm64") {
-            $extraParams += "-p:CppLinkerName=aarch64-linux-gnu-gcc"
-        }
-        
         dotnet publish Opener/Opener.csproj `
           -c Release `
           -f net10.0 `
           -r ${{ matrix.rid }} `
           --self-contained `
           -p:PublishAot=true `
-          @extraParams `
           -o "./publish-aot"
 
     - name: Package Binary (Windows)
