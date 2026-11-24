@@ -17,15 +17,18 @@ Last updated 2026-11-24 by "Release 1.2.0"
 - Interactive picker (`o` with no args), git-based encrypted vault sync with opt-in auto-sync, backups, `o docs` generated HTML page.
 
 ## In progress
-- Release 1.2.0 not yet published: tag run 45419230487 built all binaries but the NuGet push failed (API key expired). Publish job switched to Trusted Publishing; waiting on the nuget.org policy, then move tag `v1.2.0` to that commit and verify NuGet 1.2.0 + GitHub release assets.
+- Nothing.
 
 ## Remaining
 - Template and WebPath still resolve in two passes (`{0}` then `<name>`), so a CLI arg containing `<x>` text gets rescanned; Template should move to `ResolveSinglePass`.
 - Optional: placeholders for LocalPath (placeholders consume args, the rest pass through as argv).
+- linux-x64 AOT builds on `ubuntu-latest` (now 26.04), so the binary needs that release's glibc; pin it to `ubuntu-24.04` like arm64 so it runs on older distros.
+- NuGet push warns "Readme missing": add `PackageReadmeFile` to `Opener.csproj`.
 
 ## Last session
 - Released 1.2.0: `Template` key type, stderr warnings, `$` fix, and Rest single-pass substitution (one tokenizing pass over url/header/body text; a referenced secret reaches the request unchanged and an extracted value containing `{{key:...}}` is not resolved).
-- Verified: all 130 unit tests pass on net8.0 and net10.0 on merged main. Version bumped in `Opener.csproj`, CHANGELOG section `[1.2.0]`, tag `v1.2.0` pushed (triggers NuGet publish, AOT binaries, GitHub release).
+- Verified: all 130 unit tests pass on net8.0 and net10.0. Release run 45435348131 (tag `v1.2.0` at 9ce365e) succeeded: GitHub release "Release 1.2.0" has 6 binaries + SHA256SUMS + nupkg; NuGet push accepted via Trusted Publishing ("Your package was pushed").
+- Fixed on the way: linux-arm64 now builds on native `ubuntu-24.04-arm`; NuGet push moved from the expired `NUGET_API_KEY` secret to Trusted Publishing. A macOS arm64 runner shortage cancelled one build once; `gh run rerun --failed` fixed it.
 - Release steps: bump `<Version>` in `Opener/Opener.csproj`, rename `[Unreleased]` to `## [x.y.z] - date` in CHANGELOG (publish.yml reads release notes from that heading), push main, then push tag `vx.y.z`.
 
 ## Next task
