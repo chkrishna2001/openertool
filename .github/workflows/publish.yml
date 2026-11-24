@@ -170,7 +170,13 @@ jobs:
     needs: [integration-tests, build-binaries]
     runs-on: windows-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    
+    # Job-level permissions replace the workflow-level block, so contents: write is
+    # repeated here for the GitHub release. id-token: write lets NuGet/login exchange
+    # the run's OIDC token for a short-lived NuGet API key (Trusted Publishing).
+    permissions:
+      contents: write
+      id-token: write
+
     steps:
     - uses: actions/checkout@v4
     
@@ -227,6 +233,14 @@ jobs:
 
         dotnet pack Opener.sln --configuration Release --output ./nupkg --no-build /p:Version=$env:PACKAGE_VERSION
 
+    # Trusted Publishing: needs a policy on nuget.org for this repo + publish.yml.
+    # No stored API key; the key this returns expires after an hour.
+    - name: NuGet login (OIDC)
+      id: nuget-login
+      uses: NuGet/login@v1
+      with:
+        user: chkrishna2001
+
     - name: Push to NuGet
       shell: pwsh
       run: |
@@ -239,7 +253,7 @@ jobs:
           dotnet nuget push $package.FullName --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
         }
       env:
-        NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
 
     - name: Download Built Binaries
       uses: actions/download-artifact@v4

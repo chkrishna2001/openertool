@@ -17,7 +17,7 @@ Last updated 2026-11-24 by "Release 1.2.0"
 - Interactive picker (`o` with no args), git-based encrypted vault sync with opt-in auto-sync, backups, `o docs` generated HTML page.
 
 ## In progress
-- Nothing.
+- Release 1.2.0 not yet published: tag run 45419230487 built all binaries but the NuGet push failed (API key expired). Publish job switched to Trusted Publishing; waiting on the nuget.org policy, then move tag `v1.2.0` to that commit and verify NuGet 1.2.0 + GitHub release assets.
 
 ## Remaining
 - Template and WebPath still resolve in two passes (`{0}` then `<name>`), so a CLI arg containing `<x>` text gets rescanned; Template should move to `ResolveSinglePass`.
@@ -40,4 +40,6 @@ Last updated 2026-11-24 by "Release 1.2.0"
 - Warnings must go to stderr (`ActionService.WriteWarning`); stdout is the value for `-r` consumers (scripts, agents).
 - CLI smoke tests must set `OPENER_HOME` and `OPENER_DATA_DIR` to a sandbox, or they write to the real vault.
 - linux-arm64 AOT in `publish.yml` builds natively on `ubuntu-24.04-arm`. Dead end: cross-compiling from `ubuntu-latest` broke twice when it moved to 26.04 (arm64 apt suites pinned to noble, then the image's newer gcc/binutils forced downgrades). Binary builds only run on `v*` tags, so a workflow break shows up only at release time.
+- NuGet push uses Trusted Publishing (`NuGet/login@v1`, user `chkrishna2001`, job needs `id-token: write`); the nuget.org policy must name repo `chkrishna2001/openertool` and workflow `publish.yml`. Renaming the workflow file breaks publishing until the policy is updated. The old `NUGET_API_KEY` secret expired 2026-11 and is no longer used.
+- Re-running a failed job uses the workflow file from the tagged commit; a workflow fix needs the tag moved (or a new version).
 - Docs deploy sometimes fails with "No artifacts named github-pages" right after a successful upload; start a fresh run (`gh workflow run deploy-docs.yml --ref main`), since re-running the same run then finds two artifacts.
